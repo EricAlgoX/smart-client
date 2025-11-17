@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>Form</class>
- <widget class="QWidget" name="Form">
+ <class>SmartClient</class>
+ <widget class="QWidget" name="SmartClient">
   <property name="enabled">
    <bool>true</bool>
   </property>
@@ -9,7 +9,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1280</width>
+    <width>1282</width>
     <height>720</height>
    </rect>
   </property>
@@ -21,25 +21,172 @@
   </property>
   <property name="minimumSize">
    <size>
-    <width>1280</width>
+    <width>1282</width>
     <height>720</height>
    </size>
   </property>
   <property name="maximumSize">
    <size>
-    <width>1280</width>
+    <width>1282</width>
     <height>720</height>
    </size>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>SmartClient</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">
-#Form {
-background-image: url(&quot;resources/icons/background1.png&quot;);
-    background-repeat: no-repeat;
+   <string notr="true">/*   🌆 1. 窗口背景设置 */
+#SmartClient {
+    background-image: url(&quot;resources/icons/background1.png&quot;);
+    background-repeat: no-repeat; 
     background-position: center;
+}
+
+/* 🎨 2. 全局基础样式（所有控件） */
+* {
+    color: white;
+	background: transparent;
+}
+
+/* 🖱 3. QPushButton样式 */
+QPushButton {
+	border-radius: 4px; 
+    border: 1px solid rgba(255, 255, 255, 0.1);
+	background-color: rgba(255, 255, 255, 0.1);
+}
+QPushButton:checked {
+	border: 1px solid white;
+    background-color: rgba(255, 255, 255, 0.5);
+}
+QPushButton:hover {
+	border: 1px solid white;
+    background-color: rgba(255, 255, 255, 0.3);
+}
+QPushButton:disabled {/* 不可用状态 */
+    background-color: rgba(255, 255, 255, 0.05); /* 更暗的半透明 */
+    color: rgba(255, 255, 255, 0.4);           /* 灰白文字 */
+    border: 1px solid rgba(255,255,255,0.2);   /* 边框也更暗 */
+}
+
+/* 	   4.下拉框（与输入框保持一致风格） */
+QComboBox {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    color: white;
+}
+
+/* 🎛 5.QDoubleSpinBox 样式 */
+QDoubleSpinBox {
+    background-color: rgba(255, 255, 255, 0.1); /* 半透明背景 */                               
+    border: 1px solid rgba(255, 255, 255, 0.5); /* 边框 */
+    border-radius: 4px;                          /* 圆角 */
+    padding: 2px 4px;                            /* 内边距 */
+}
+
+QDoubleSpinBox::up-button:hover,
+QDoubleSpinBox::down-button:hover {/* 鼠标悬停效果 */
+    background-color: rgba(255,255,255,0.4);
+}
+
+/* 🎚 6. QSlider 样式（白色圆点） */
+QSlider::groove:horizontal {
+    background: rgba(255,255,255,0.2);
+    height: 4px;
+    border-radius: 2px;
+}
+QSlider::handle:horizontal {
+    background: white;
+    border: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    margin: -5px 0;
+}
+QSlider::sub-page:horizontal {/* 已滑动部分 */
+    background: rgba(255,255,255,0.6);
+    border-radius: 2px;
+}
+QSlider::add-page:horizontal {/* 未滑动部分 */
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+}
+QSlider::handle:horizontal:hover {/* hover 高亮 */
+    background: #00bfff;
+}
+
+/* 📋 7. 表格 / 列表 / 树控件 */
+QTableWidget, QTableView {/* 整个表格背景 */
+    background-color: rgba(30, 30, 30, 0.2); /* 深色半透明背景 */
+    color: white;                             /* 字体颜色 */
+    border: none; /* 表格边框 */
+    gridline-color: rgba(255,255,255,0.3);   /* 网格线颜色 */
+    selection-background-color: rgba(0, 120, 215, 0.5); /* 选中行背景 */
+    selection-color: white;                   /* 选中行文字 */
+}
+QHeaderView::section {/* 表头样式 */
+    background-color: rgba(30, 30, 30, 0.2); /* 表头深色 */
+    color: white;                             /* 表头字体 */
+    border: 1px solid rgba(255,255,255,0.3); /* 表头边框 */
+    padding: 4px;                             /* 内边距 */
+    border-radius: 4px;                       /* 圆角 */
+}
+QTableCornerButton::section {/* 表格角落按钮（左上角） */
+    background-color: rgba(30, 30, 30, 0.2);
+    border: 1px solid rgba(255,255,255,0.3);
+}
+QScrollBar:vertical {
+    background: transparent;
+    border: none;
+    width: 12px;
+    margin: 4px 2px 4px 0px;   /* 上、右、下、左 */
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    border: none;
+    height: 6px;
+    margin: 0px 4px 2px 4px;   /* 上、右、下、左 */
+}
+
+QScrollBar::handle {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+QScrollBar::handle:hover {
+    background: rgba(255, 255, 255, 0.6);
+}
+QScrollBar::add-line, QScrollBar::sub-line,
+QScrollBar::add-page, QScrollBar::sub-page {
+    background: transparent;
+    border: none;
+	height: 0px;
+    width: 0px;
+}
+
+/* 🪟 8. 弹出窗口样式（正常显示）*/
+QDialog, QMessageBox {
+    background-color: white;
+    color: black;
+    border: 1px solid #cccccc;
+    border-radius: 8px;
+    padding: 10px;
+}
+QDialog *,
+QMessageBox * {/* 确保弹出窗口内的控件正常显示 */
+    background-color: white;
+    color: black;
+    border: 1px solid #cccccc;
+}
+
+
+/* 9. 全局 tooltip 样式 */
+QToolTip {
+    background-color: rgba(50, 50, 50, 230);  /* 半透明深灰 */
+    color: white;                              /* 字体白色 */
+    border: 1px solid white;                   /* 白色边框 */
+    border-radius: 4px;                        /* 圆角 */
+    padding: 4px 8px;                          /* 内边距 */
+    font-size: 12px;                           /* 字体大小 */
 }</string>
   </property>
   <widget class="QWidget" name="layoutWidget">
@@ -47,11 +194,11 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1281</width>
+     <width>1362</width>
      <height>721</height>
     </rect>
    </property>
-   <layout class="QGridLayout" name="gridLayout_5" rowstretch="2,0,0,0,0" columnstretch="1,2,1">
+   <layout class="QGridLayout" name="gridLayout_5" rowstretch="2,0,0,0,0" columnstretch="2,4,2">
     <property name="leftMargin">
      <number>6</number>
     </property>
@@ -64,78 +211,28 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
     <property name="bottomMargin">
      <number>6</number>
     </property>
-    <item row="4" column="0">
-     <widget class="QGroupBox" name="groupBox_7">
-      <property name="title">
-       <string>关于</string>
-      </property>
-      <layout class="QHBoxLayout" name="horizontalLayout_2">
-       <item>
-        <widget class="QPushButton" name="pushButton_14">
-         <property name="toolTip">
-          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;作者：EricReno&lt;/p&gt;&lt;p&gt;邮箱：christopher0527@163.com&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-         </property>
-         <property name="text">
-          <string>关于作者</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="pushButton_16">
-         <property name="toolTip">
-          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;软件名称：smartclient&lt;/p&gt;&lt;p&gt;版本：v1.0.0&lt;/p&gt;&lt;p&gt;功能：图像/视频智能识别与处理&lt;/p&gt;&lt;p&gt;开发环境：Python + PyQt5&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-         </property>
-         <property name="text">
-          <string>关于软件</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-    </item>
-    <item row="3" column="2" rowspan="2">
-     <widget class="QGroupBox" name="groupBox_3">
-      <property name="title">
-       <string>日志输出</string>
-      </property>
-     </widget>
-    </item>
     <item row="0" column="0">
      <widget class="QGroupBox" name="groupBox_4">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>317</width>
+        <height>160</height>
+       </size>
+      </property>
       <property name="styleSheet">
        <string notr="true"/>
       </property>
       <property name="title">
-       <string>数据输入</string>
+       <string>输入控制</string>
       </property>
-      <layout class="QGridLayout" name="gridLayout_4" columnstretch="3,1,0">
-       <item row="0" column="0" colspan="2">
-        <widget class="QLineEdit" name="lineEdit_14">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="styleSheet">
-          <string notr="true">QLineEdit {
-    background: transparent;
-    border: none;
-}
-</string>
-         </property>
-         <property name="text">
-          <string>数据输入：</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
-         </property>
-         <property name="readOnly">
-          <bool>true</bool>
-         </property>
-        </widget>
-       </item>
-       <item row="6" column="0" colspan="2">
+      <layout class="QGridLayout" name="gridLayout_4" columnstretch="3,1,0,0">
+       <item row="6" column="0">
         <widget class="QLineEdit" name="lineEdit_2">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -151,7 +248,7 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
 </string>
          </property>
          <property name="text">
-          <string>模型选择：</string>
+          <string>模型选择</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>
@@ -161,18 +258,27 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
          </property>
         </widget>
        </item>
-       <item row="6" column="2">
+       <item row="6" column="1" colspan="3">
         <widget class="QComboBox" name="selectModelBox">
+         <property name="enabled">
+          <bool>true</bool>
+         </property>
          <property name="sizePolicy">
           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
          </property>
+         <property name="minimumSize">
+          <size>
+           <width>206</width>
+           <height>20</height>
+          </size>
+         </property>
          <property name="maximumSize">
           <size>
-           <width>150</width>
-           <height>26</height>
+           <width>206</width>
+           <height>20</height>
           </size>
          </property>
          <item>
@@ -182,7 +288,32 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
          </item>
         </widget>
        </item>
-       <item row="0" column="2">
+       <item row="5" column="1">
+        <widget class="QPushButton" name="selectFolderButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>22</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>22</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>文件夹</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
         <widget class="QPushButton" name="selectImageButton">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -192,14 +323,14 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
          </property>
          <property name="minimumSize">
           <size>
-           <width>150</width>
-           <height>26</height>
+           <width>100</width>
+           <height>22</height>
           </size>
          </property>
          <property name="maximumSize">
           <size>
-           <width>150</width>
-           <height>26</height>
+           <width>100</width>
+           <height>22</height>
           </size>
          </property>
          <property name="layoutDirection">
@@ -210,13 +341,25 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
          </property>
         </widget>
        </item>
-       <item row="4" column="2">
+       <item row="0" column="2">
         <widget class="QPushButton" name="selectVideoButton">
          <property name="sizePolicy">
-          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>22</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>22</height>
+          </size>
          </property>
          <property name="text">
           <string>视频</string>
@@ -224,55 +367,32 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
         </widget>
        </item>
        <item row="5" column="2">
-        <widget class="QPushButton" name="selectFolderButton">
+        <widget class="QPushButton" name="selectSourceButton">
          <property name="sizePolicy">
-          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
          </property>
-         <property name="text">
-          <string>文件夹</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-    </item>
-    <item row="1" column="0">
-     <widget class="QGroupBox" name="groupBox_2">
-      <property name="title">
-       <string>数据输入</string>
-      </property>
-      <layout class="QGridLayout" name="gridLayout">
-       <item row="4" column="0">
-        <spacer name="verticalSpacer_3">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
+         <property name="minimumSize">
           <size>
-           <width>20</width>
-           <height>40</height>
+           <width>100</width>
+           <height>22</height>
           </size>
          </property>
-        </spacer>
-       </item>
-       <item row="6" column="0">
-        <widget class="QDoubleSpinBox" name="conSpinBox">
-         <property name="maximum">
-          <double>1.000000000000000</double>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>22</height>
+          </size>
          </property>
-         <property name="singleStep">
-          <double>0.010000000000000</double>
-         </property>
-         <property name="value">
-          <double>0.300000000000000</double>
+         <property name="text">
+          <string>视频源</string>
          </property>
         </widget>
        </item>
-       <item row="0" column="0" colspan="2">
-        <widget class="QLineEdit" name="lineEdit_12">
+       <item row="0" column="0">
+        <widget class="QLineEdit" name="lineEdit_14">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
            <horstretch>0</horstretch>
@@ -287,90 +407,27 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
 </string>
          </property>
          <property name="text">
-          <string>重叠度(NMS)设置：</string>
+          <string>数据输入</string>
          </property>
          <property name="alignment">
-          <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+          <set>Qt::AlignCenter</set>
          </property>
          <property name="readOnly">
           <bool>true</bool>
          </property>
         </widget>
        </item>
-       <item row="6" column="1" colspan="3">
-        <widget class="QSlider" name="conSlider">
-         <property name="value">
-          <number>30</number>
-         </property>
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="3">
-        <spacer name="horizontalSpacer_4">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="0" column="2">
-        <spacer name="horizontalSpacer_5">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="2" column="0">
-        <widget class="QDoubleSpinBox" name="nmsSpinBox">
-         <property name="maximum">
-          <double>1.000000000000000</double>
-         </property>
-         <property name="singleStep">
-          <double>0.010000000000000</double>
-         </property>
-         <property name="value">
-          <double>0.500000000000000</double>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="1" colspan="3">
-        <widget class="QSlider" name="nmsSlider">
-         <property name="value">
-          <number>50</number>
-         </property>
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="8" column="2" colspan="2">
-        <widget class="QDoubleSpinBox" name="timeoutSpinBox">
-         <property name="maximum">
-          <double>9999999.000000000000000</double>
-         </property>
-         <property name="singleStep">
-          <double>1.000000000000000</double>
-         </property>
-         <property name="value">
-          <double>3.000000000000000</double>
-         </property>
-        </widget>
-       </item>
-       <item row="7" column="0">
-        <spacer name="verticalSpacer_9">
+      </layout>
+     </widget>
+    </item>
+    <item row="1" column="0">
+     <widget class="QGroupBox" name="groupBox_2">
+      <property name="title">
+       <string>模型设置</string>
+      </property>
+      <layout class="QGridLayout" name="gridLayout">
+       <item row="5" column="0">
+        <spacer name="verticalSpacer_3">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>
@@ -382,20 +439,56 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
          </property>
         </spacer>
        </item>
-       <item row="8" column="1">
-        <spacer name="horizontalSpacer_6">
+       <item row="3" column="1" colspan="3">
+        <widget class="QSlider" name="nmsSlider">
+         <property name="value">
+          <number>50</number>
+         </property>
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
          </property>
+        </widget>
+       </item>
+       <item row="7" column="1" colspan="3">
+        <widget class="QSlider" name="conSlider">
+         <property name="styleSheet">
+          <string notr="true"/>
+         </property>
+         <property name="value">
+          <number>30</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item row="7" column="0">
+        <widget class="QDoubleSpinBox" name="conSpinBox">
+         <property name="maximum">
+          <double>1.000000000000000</double>
+         </property>
+         <property name="singleStep">
+          <double>0.010000000000000</double>
+         </property>
+         <property name="value">
+          <double>0.300000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="0">
+        <spacer name="verticalSpacer_4">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
          <property name="sizeHint" stdset="0">
           <size>
-           <width>40</width>
-           <height>20</height>
+           <width>20</width>
+           <height>40</height>
           </size>
          </property>
         </spacer>
        </item>
-       <item row="5" column="0">
+       <item row="6" column="0" colspan="3">
         <widget class="QLineEdit" name="lineEdit_11">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -422,6 +515,71 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
         </widget>
        </item>
        <item row="8" column="0">
+        <spacer name="verticalSpacer_9">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item row="9" column="2" colspan="2">
+        <widget class="QDoubleSpinBox" name="timeoutSpinBox">
+         <property name="maximum">
+          <double>9999999.000000000000000</double>
+         </property>
+         <property name="singleStep">
+          <double>1.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>3.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QDoubleSpinBox" name="nmsSpinBox">
+         <property name="maximum">
+          <double>1.000000000000000</double>
+         </property>
+         <property name="singleStep">
+          <double>0.010000000000000</double>
+         </property>
+         <property name="value">
+          <double>0.500000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0" colspan="3">
+        <widget class="QLineEdit" name="lineEdit_12">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">QLineEdit {
+    background: transparent;
+    border: none;
+}
+</string>
+         </property>
+         <property name="text">
+          <string>重叠度(NMS)设置：</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="9" column="0" colspan="2">
         <widget class="QLineEdit" name="lineEdit_13">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -455,15 +613,45 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
       <property name="enabled">
        <bool>true</bool>
       </property>
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>949</width>
+        <height>16777215</height>
+       </size>
+      </property>
       <property name="styleSheet">
        <string notr="true"/>
       </property>
       <property name="title">
-       <string/>
+       <string>主窗口</string>
       </property>
       <layout class="QGridLayout" name="gridLayout_3">
        <item row="0" column="0">
         <widget class="QLabel" name="label">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>929</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>929</width>
+           <height>517</height>
+          </size>
+         </property>
          <property name="text">
           <string/>
          </property>
@@ -477,6 +665,18 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
     </item>
     <item row="3" column="1" rowspan="2">
      <widget class="QGroupBox" name="groupBox_5">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>700</width>
+        <height>184</height>
+       </size>
+      </property>
       <property name="title">
        <string>检测结果</string>
       </property>
@@ -484,10 +684,16 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
        <property name="geometry">
         <rect>
          <x>10</x>
-         <y>30</y>
-         <width>611</width>
-         <height>171</height>
+         <y>19</y>
+         <width>681</width>
+         <height>161</height>
         </rect>
+       </property>
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
        </property>
        <attribute name="horizontalHeaderCascadingSectionResizes">
         <bool>false</bool>
@@ -499,7 +705,7 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
         <bool>true</bool>
        </attribute>
        <attribute name="verticalHeaderDefaultSectionSize">
-        <number>30</number>
+        <number>28</number>
        </attribute>
        <attribute name="verticalHeaderStretchLastSection">
         <bool>false</bool>
@@ -527,16 +733,6 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
        <row>
         <property name="text">
          <string>5</string>
-        </property>
-       </row>
-       <row>
-        <property name="text">
-         <string>6</string>
-        </property>
-       </row>
-       <row>
-        <property name="text">
-         <string>7</string>
         </property>
        </row>
        <column>
@@ -574,14 +770,129 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
       </widget>
      </widget>
     </item>
+    <item row="3" column="2" rowspan="2">
+     <widget class="QGroupBox" name="groupBox_3">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>16777215</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <property name="title">
+       <string>日志输出</string>
+      </property>
+      <widget class="QTextEdit" name="log_edit">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>20</y>
+         <width>281</width>
+         <height>151</height>
+        </rect>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QTextEdit {
+    border: none;              /* 去掉边框 */
+    background: transparent;   /* 背景透明 */
+	font-size: 10pt;     /* 调整字体大小 */
+    color: white;        /* 可选：设置字体颜色 */
+}
+</string>
+       </property>
+      </widget>
+     </widget>
+    </item>
+    <item row="4" column="0">
+     <widget class="QGroupBox" name="groupBox_7">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>317</width>
+        <height>80</height>
+       </size>
+      </property>
+      <property name="title">
+       <string>关于</string>
+      </property>
+      <layout class="QHBoxLayout" name="horizontalLayout_2">
+       <item>
+        <widget class="QPushButton" name="pushButton_14">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="toolTip">
+          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;作者：EricReno&lt;/p&gt;&lt;p&gt;邮箱：christopher0527@163.com&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         </property>
+         <property name="text">
+          <string>作者</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="pushButton_16">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="toolTip">
+          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;软件名称：SmartClient&lt;/p&gt;&lt;p&gt;版本：v1.0.0&lt;/p&gt;&lt;p&gt;功能：图像/视频智能识别与处理&lt;/p&gt;&lt;p&gt;开发环境：Python + PyQt5&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         </property>
+         <property name="text">
+          <string>软件</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
     <item row="2" column="0" rowspan="2">
      <widget class="QGroupBox" name="groupBox_6">
       <property name="title">
        <string>操作台</string>
       </property>
       <layout class="QGridLayout" name="gridLayout_2">
-       <item row="0" column="0">
-        <spacer name="verticalSpacer_7">
+       <item row="10" column="0">
+        <spacer name="verticalSpacer_8">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>
@@ -592,20 +903,6 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
           </size>
          </property>
         </spacer>
-       </item>
-       <item row="5" column="0">
-        <widget class="QPushButton" name="clearImageButton">
-         <property name="text">
-          <string>清空画面</string>
-         </property>
-        </widget>
-       </item>
-       <item row="7" column="0">
-        <widget class="QPushButton" name="exportDataButton">
-         <property name="text">
-          <string>导出数据</string>
-         </property>
-        </widget>
        </item>
        <item row="4" column="0">
         <spacer name="verticalSpacer_5">
@@ -620,7 +917,7 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
          </property>
         </spacer>
        </item>
-       <item row="6" column="0">
+       <item row="7" column="0">
         <spacer name="verticalSpacer_6">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
@@ -633,21 +930,8 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
          </property>
         </spacer>
        </item>
-       <item row="1" column="0">
-        <widget class="QPushButton" name="startDetectionButton">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="text">
-          <string>开始检测</string>
-         </property>
-        </widget>
-       </item>
-       <item row="8" column="0">
-        <spacer name="verticalSpacer_8">
+       <item row="0" column="0">
+        <spacer name="verticalSpacer_7">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>
@@ -660,19 +944,6 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
         </spacer>
        </item>
        <item row="1" column="1">
-        <widget class="QPushButton" name="setROIButton">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="text">
-          <string>设置视频围栏</string>
-         </property>
-        </widget>
-       </item>
-       <item row="7" column="1">
         <widget class="QPushButton" name="clearROIButton">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -680,8 +951,170 @@ background-image: url(&quot;resources/icons/background1.png&quot;);
            <verstretch>0</verstretch>
           </sizepolicy>
          </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
          <property name="text">
-          <string>清除视频围栏</string>
+          <string>清除围栏</string>
+         </property>
+        </widget>
+       </item>
+       <item row="8" column="0">
+        <widget class="QPushButton" name="saveDataButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>保存数据</string>
+         </property>
+        </widget>
+       </item>
+       <item row="8" column="1">
+        <widget class="QPushButton" name="clearImageButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>清空画面</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QPushButton" name="setROIButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>设置围栏</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="0">
+        <widget class="QPushButton" name="startDetectionButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>  开始推理 </string>
+         </property>
+        </widget>
+       </item>
+       <item row="7" column="1">
+        <widget class="QPushButton" name="autoInferButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>自动推理</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="1">
+        <widget class="QPushButton" name="nextButton">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>20</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>下一张</string>
          </property>
         </widget>
        </item>

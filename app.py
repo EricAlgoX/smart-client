@@ -1,17 +1,15 @@
-from PyQt5 import QtWidgets, uic
 import sys
-import logging
-
-from controller.main_controller import MainController
 import random
-
+import logging
+from PyQt5 import QtWidgets, uic
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QLabel
-from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QLinearGradient,  QIcon
-from info import __appname__, __preferred_device__, __url__, __version__
+from PyQt5.QtGui import QPainter, QColor, QBrush, QIcon
+
 from utils.logger import logger
 from utils.general import gradient_text
-from model.server import stop_all_servers
+from core.server import stop_all_servers
+from controller.main_controller import MainController
+from info import __appname__, __preferred_device__, __url__, __version__
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -19,7 +17,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("Smart-Client")
         # 设置窗口图标（ico 或 png 均可）
         self.setWindowIcon(QIcon("resources/app.ico"))
-        
+
         # 直接加载 ui 文件
         uic.loadUi("ui/mainwindow.ui", self)
             

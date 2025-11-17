@@ -23,16 +23,14 @@ python app.py
 ## 代码结构
 ```plaintext
 project/
-│── main.py               # 程序入口
+│── app.py               # 程序入口
 │── ui/
 │    └── mainwindow.ui    # 由QtDesigner生成
-│── view/
-│    └── mainwindow.py    # PyUIC 转换的 UI 类（UI 层）
 │── controller/
 │    └── main_controller.py   # 业务逻辑控制层
-│── model/
-│    └── ai_inference.py      # AI算法封装（推理模型）
-│    └── video_stream.py      # 数据源（摄像头/视频流）
+│── core/
+│    └── inference.py   # AI算法封装（推理模型）
+│    └── stream.py      # 数据源（摄像头/视频流）
 │── resources/
 │    └── icons/ ...           # 图标、背景等
 ```

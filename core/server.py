@@ -2,12 +2,20 @@ from logging import Logger
 import os
 import sys
 import subprocess
+import threading
 from utils.logger import logger
 from typing import Dict, Optional
 
 # 维护已启动的算法进程句柄（按算法键名存储）
 _RUNNING_PROCESSES: Dict[str, subprocess.Popen] = {}
 
+
+def _stream_pipe(pipe, log_func, prefix: str) -> None:
+    for line in iter(pipe.readline, ""):
+        text = line.rstrip("\n\r")
+        if text:
+            log_func(f"{prefix} {text}")
+    pipe.close()
 
 def start_server(algorithms_name: str) -> bool:
     """启动指定算法的 FastAPI 服务。
@@ -16,6 +24,7 @@ def start_server(algorithms_name: str) -> bool:
     """
     if algorithms_name in _RUNNING_PROCESSES and _RUNNING_PROCESSES[algorithms_name].poll() is None:
         # 已在运行
+        logger.info(f"正在运行 SV{algorithms_id}/{script_name} ... (PID: {proc.pid})")
         return True
 
     algorithms_id = algorithms_name.split('_')[0]
@@ -54,13 +63,20 @@ def start_server(algorithms_name: str) -> bool:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            universal_newlines=True
+            universal_newlines=True,
         )
         _RUNNING_PROCESSES[algorithms_name] = proc
-        Logger.info(f"正在运行 SV{algorithms_id}/{script_name} ... (PID: {proc.pid})")
+        t_out = threading.Thread(
+            target=_stream_pipe,
+            args=(proc.stdout, logger.info, f"[{algorithms_name}]"),
+            daemon=True,
+        )
+        t_out.start()
+
+        logger.info(f"启动 SV{algorithms_id}/{script_name} ... (PID: {proc.pid}) 成功")
         return True
     except Exception as e:
-        Logger.info(f"启动 SV{algorithms_id}/{script_name} 失败: {e}")
+        logger.info(f"启动 SV{algorithms_id}/{script_name} 失败: {e}")
         return False
 
 
@@ -86,7 +102,6 @@ def stop_server(algorithms_name: str) -> bool:
         _RUNNING_PROCESSES.pop(algorithms_name, None)
     return True
 
-
 def stop_all_servers() -> None:
     """停止所有已启动的算法服务。"""
     for name in list(_RUNNING_PROCESSES.keys()):
@@ -98,4 +113,4 @@ def stop_all_servers() -> None:
             pass
 
 if __name__ == "__main__":
-    start_server('22_face')
+    start_server('01_overflow')

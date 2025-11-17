@@ -23,7 +23,7 @@ class Inference:
         :param timeout: 超时时间（秒）
         :return: dict
         """
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         _, buffer = cv2.imencode('.jpg', frame)
 
         data = {
