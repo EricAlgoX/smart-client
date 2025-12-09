@@ -74,21 +74,24 @@ class MainWindow(QtWidgets.QMainWindow):
             painter.setBrush(QBrush(QColor(255, 255, 255, 100)))  # 半透明白色
             painter.setPen(Qt.NoPen)
             painter.drawEllipse(int(dot[0]), int(dot[1]), int(dot[2]), int(dot[2]))
+    
+    def closeEvent(self, event):
+        # 这里可以做一些界面自己的清理
+        stop_all_servers()  # 关闭所有算法子进程
+        super().closeEvent(event)
 
 def main():
-    try:
-        logger.setLevel(getattr(logging, "INFO"))
-        logger.info(
-            f"🚀 {gradient_text(f'Smart-Client v{__version__} launched!')}"
-        )
+    logger.setLevel(getattr(logging, "INFO"))
+    logger.info(
+        f"🚀 {gradient_text(f'Smart-Client v{__version__} launched!')}"
+    )
 
-        logger.info(f"⭐ If you like it, give us a star: {__url__}")
+    logger.info(f"⭐ If you like it, give us a star: {__url__}")
 
-        app = QtWidgets.QApplication(sys.argv)
-        window = MainWindow()
-        window.show()
-        sys.exit(app.exec_())
-    finally:
-        stop_all_servers()
+    app = QtWidgets.QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())
+
 if __name__ == "__main__":
     main()

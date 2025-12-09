@@ -24,7 +24,6 @@ def resize(frame):
     # 使用高质量的插值算法进行缩放
     resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
     
-    logger.info(f"图片尺寸 {width}x{height} 超过限制，已缩放至 {new_width}x{new_height}")
     return resized_frame
 
 class ImageStream:
@@ -62,7 +61,8 @@ class VideoStream:
         for _ in range(retries):
             ret, frame = self.cap.read()
             if ret and frame is not None:
-                return resize(frame), time.strftime("%Y%m%d_%H%M%S", time.localtime()) + '.jpg'
+                image_name = os.path.join('images', time.strftime("%Y%m%d_%H%M%S", time.localtime()) + '.jpg')
+                return resize(frame), image_name
             time.sleep(0.01)
         return None, None
 
@@ -232,8 +232,8 @@ def select_stream(self):
                 self.ui, 
                 "输入流地址", 
                 "请输入 RTSP/HTTP 流地址（例如 rtsp://... 或 http://...）:",
-                # text="rtsp://admin:Geovis@13@192.168.110.120:554"
-                text="rtsp://admin:Geovis13@192.168.130.164:554"
+                text="rtsp://admin:Geovis@13@192.168.110.120:554"
+                # text="rtsp://admin:Geovis13@192.168.130.164:554"
 
             )
             if not ok:

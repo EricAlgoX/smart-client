@@ -67,7 +67,7 @@ class ImageWriter:
         basename = os.path.basename(img_path)
         full_path = os.path.join(self.save_dir, basename)
         try:
-            self.queue.put_nowait((full_path, image))
+            self.queue.put((full_path, image))
             return True
         except queue.Full:
             if drop_if_full:
@@ -113,7 +113,7 @@ class LabelWriter:
         # basename = os.path.basename(label_path)
         # full_path = os.path.join(self.save_dir, basename)
         try:
-            self.queue.put_nowait((image_path, label))
+            self.queue.put((image_path, label))
             return True
         except queue.Full:
             if drop_if_full:
@@ -154,23 +154,19 @@ class LabelWriter:
 
                 for det in label:
                     obj = ET.SubElement(annotation, "object")
-                    ET.SubElement(obj, "name").text = det["class_name"]
+                    ET.SubElement(obj, "name").text = det["class"]
                     ET.SubElement(obj, "pose").text = 'Unspecified'
                     ET.SubElement(obj, "truncated").text = '0'
                     ET.SubElement(obj, "occluded").text = '0'
                     ET.SubElement(obj, "difficult").text = '0'
 
-                    bbox = det["bbox"]
-                    x_cen, y_cen, width, height = bbox["x_cen"], bbox["y_cen"], bbox["width"], bbox["height"]
-                    xmin = int(x_cen - width / 2)
-                    ymin = int(y_cen - height / 2)
-                    xmax = int(x_cen + width / 2)
-                    ymax = int(y_cen + height / 2)
+                    bbox = det["coordinate"]
+
                     bndbox = ET.SubElement(obj, "bndbox")
-                    ET.SubElement(bndbox, "xmin").text = str(int(xmin))
-                    ET.SubElement(bndbox, "ymin").text = str(int(ymin))
-                    ET.SubElement(bndbox, "xmax").text = str(int(xmax))
-                    ET.SubElement(bndbox, "ymax").text = str(int(ymax))
+                    ET.SubElement(bndbox, "xmin").text = str(int(bbox[0][0]))
+                    ET.SubElement(bndbox, "ymin").text = str(int(bbox[0][1]))
+                    ET.SubElement(bndbox, "xmax").text = str(int(bbox[1][0]))
+                    ET.SubElement(bndbox, "ymax").text = str(int(bbox[1][1]))
 
                 tree = ET.ElementTree(annotation)
                 tree.write(xml_path, xml_declaration=True)

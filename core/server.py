@@ -9,7 +9,6 @@ from typing import Dict, Optional
 # 维护已启动的算法进程句柄（按算法键名存储）
 _RUNNING_PROCESSES: Dict[str, subprocess.Popen] = {}
 
-
 def _stream_pipe(pipe, log_func, prefix: str) -> None:
     for line in iter(pipe.readline, ""):
         text = line.rstrip("\n\r")
