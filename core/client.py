@@ -56,6 +56,10 @@ class StartClient(QThread):
 
         self.viz = Visualizer()
 
+        # 创建 Session
+        self.session = requests.Session()
+        self.session.headers.update({"Connection": "keep-alive"})  # 默认就会启用 Keep-Alive
+
     def postprocess(self, image_bgr, result, elapsed_time):
         image = image_bgr.copy()
         details = []
@@ -99,37 +103,67 @@ class StartClient(QThread):
             except queue.Empty:
                 continue
             
-            _, buffer = cv2.imencode('.jpg', image)
+            ret, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            if not ret:
+                print("JPG编码失败")
+                continue
+
             image_base64 = base64.b64encode(buffer).decode('utf-8')
 
-            try:
-                response = requests.post(
-                    self.url,
-                    json={
-                        'image': image_base64,
-                        # 'nms': self.nms,
-                        # 'reset': False,
-                        # 'track_id': None,
-                        # 'polygon': self.polygon,
-                        # 'confidence': self.confidence,
-                        # 'timeout_mins': self.timeout_mins,
-                        # 'max_threshold': self.max_detection
-                    },
-                    timeout=(1, 3)
-                )
-                
-                # 检查HTTP状态码
-                if response.status_code != 200:
-                    error_detail = response.json()
-                    error_msg = f"HTTP {response.status_code}: {response.text}"
-                
-                elapsed_time = time.time() - start
-                image, details = self.postprocess(image, response.json(), elapsed_time)
-                result_queue.put((image, details))
-                self.q.task_done()
+            payload = {
+                'image': image_base64
+                # 'nms': self.nms,
+                # 'reset': False,
+                # 'track_id': None,
+                # 'polygon': self.polygon,
+                # 'confidence': self.confidence,
+                # 'timeout_mins': self.timeout_mins,
+                # 'max_threshold': self.max_detection
+            }
 
-            except Exception as e:
-                logger.error(f"推理失败: {e}")
-                result_queue.put((image, []))
+            # -------------------------
+            #   带 Session 的 POST 请求 + 重试
+            # -------------------------
+            for attempt in range(2):  # 你的模型很快，最多重试1次即可
+                try:
+                    response = self.session.post(
+                        self.url,
+                        json=payload,
+                        timeout=(1, 3)
+                    )
+                    response.raise_for_status()
+                    break
+                except (requests.exceptions.ConnectionError,
+                        requests.exceptions.ReadTimeout,
+                        requests.exceptions.ConnectTimeout) as e:
+
+                    print(f"[Client] 尝试 {attempt+1} 失败: {e}")
+
+                    if attempt == 1:
+                        # 两次都失败 → 用空结果
+                        result_queue.put((image, []))
+                        self.q.task_done()
+                        continue
+                    else:
+                        time.sleep(0.1)  # 防止高频重连压垮服务
+                except Exception as e:
+                    print(f"[Client] 未知异常: {e}")
+                    result_queue.put((image, []))
+                    self.q.task_done()
+                    continue
+        
+            # -------------------------
+            # POST 成功
+            # -------------------------
+            try:
+                data = response.json()
+            except:
+                data = []
+
+            elapsed = time.time() - start
+            image, details = self.postprocess(image, data, elapsed)
+
+            result_queue.put((image, details))
+            self.q.task_done()
             
             print("Client run thread id:", threading.get_ident())

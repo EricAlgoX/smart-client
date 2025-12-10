@@ -36,7 +36,7 @@ class MainController:
             logger.error(f"加载 api.json 失败: {e}")
             self.api = {}
         self.ui.selectImageButton.clicked.connect(partial[None](self.select_source, "image"))
-        self.ui.selectVideoButton.clicked.connect(partial[None](self.select_source, "video"))
+        self.ui.selectVideoButton.clicked.connect(partial[None](self.select_source, "folder"))
         self.ui.selectSourceButton.clicked.connect(partial[None](self.select_source, "stream"))
         self.ui.selectModelBox.currentIndexChanged.connect(self.select_model)
         self.ui.nmsSpinBox.valueChanged.connect(self.nmsspinbox_changed)
@@ -49,13 +49,6 @@ class MainController:
         self.ui.setROIButton.clicked.connect(self.set_roi_image)
         self.ui.clearImageButton.clicked.connect(self.clear_image)
         self.ui.clearROIButton.clicked.connect(self.clear_roi_image)
-
-        # 在主窗口初始化时启动定时器
-        self.ui_timer = QTimer()
-        self.ui_timer.timeout.connect(self.print_ui_status)
-        self.ui_timer.start(1000) 
-    def print_ui_status(self):
-        print("UI thread alive, id:", threading.get_ident())
 
     def _get_label_size(self):
         try:
@@ -159,18 +152,8 @@ class MainController:
                 else:
                     self.ui.log_edit.append("未选择有效的模型")
 
-                try:
-                    if hasattr(self.source['stream'], 'cap'):
-                        fps = self.source['stream'].cap.get(cv2.CAP_PROP_FPS)
-                        if fps > 0:
-                            interval = max(33, int(1000 / fps))  # 至少33ms
-                        else:
-                            interval = 33
-                    else:
-                        interval = 33
-                except:
-                    interval = 33
 
+                interval = 100
                 self.timer.start(interval)
                 self.ui.startDetectionButton.setText("停止检测")
                 return

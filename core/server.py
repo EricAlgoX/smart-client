@@ -1,4 +1,5 @@
-from logging import Logger
+from utils.logger import logger
+
 import os
 import sys
 import subprocess
@@ -106,9 +107,9 @@ def stop_all_servers() -> None:
     for name in list(_RUNNING_PROCESSES.keys()):
         try:
             stop_server(name)
-            Logger.info(f'killed {name}')
-        except Exception:
-            # 尽最大努力停止
+            logger.info(f'killed {name}')
+        except Exception as e:
+            print(e)
             pass
 
 if __name__ == "__main__":

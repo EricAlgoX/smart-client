@@ -76,7 +76,6 @@ class MainWindow(QtWidgets.QMainWindow):
             painter.drawEllipse(int(dot[0]), int(dot[1]), int(dot[2]), int(dot[2]))
     
     def closeEvent(self, event):
-        # 这里可以做一些界面自己的清理
         stop_all_servers()  # 关闭所有算法子进程
         super().closeEvent(event)
 
