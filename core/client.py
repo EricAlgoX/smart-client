@@ -1,31 +1,16 @@
-import threading
-
-# ui/image_viewer.py
-from core.visualizer import Visualizer
-
+import cv2
 import time
-from PyQt5.QtWidgets import QLabel
-from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtCore import Qt, pyqtSignal, QRect, QPoint
-import cv2
-import numpy as np
-from sympy.geometry.plane import y
-from PIL import Image, ImageDraw as PILImageDraw, ImageFont
-from core.queue import result_queue
-
-
-
-from pickle import FALSE
-import requests
-import cv2
 import queue
 import base64
-from PyQt5.QtCore import QThread, pyqtSignal
+import requests
+import threading
 from utils.logger import logger
+from PyQt5.QtCore import QThread
+from core.queue import result_queue
+from core.visualizer import Visualizer
+from utils.profiler import profiler
 
 class StartClient(QThread):
-    result_ready = pyqtSignal(object, list)  # result, frame, frame_name
-
     def __init__(
         self, 
         url,
@@ -49,9 +34,9 @@ class StartClient(QThread):
         self.url = url
         self.q = input_queue
         self.nms = nms
-        self.polygon = polygon,
-        self.confidence = confidence,
-        self.timeout_mins = timeout_mins,
+        self.polygon = polygon
+        self.confidence = confidence
+        self.timeout_mins = timeout_mins
         self.max_detection = max_detection
 
         self.viz = Visualizer()
@@ -60,18 +45,19 @@ class StartClient(QThread):
         self.session = requests.Session()
         self.session.headers.update({"Connection": "keep-alive"})  # 默认就会启用 Keep-Alive
 
+    @profiler.measure("postprocess")
     def postprocess(self, image_bgr, result, elapsed_time):
-        image = image_bgr.copy()
+        # 不复制图像，不绘制，只提取数据
         details = []
 
-        detections =result.get("data", {}).get("detections", [])
+        detections = result.get("data", {}).get("detections", [])
         for det in detections:
             instance = {}
 
             class_name = det.get("class_name", "")
             bbox = det.get("bbox", {})
             score = det.get("score", "")
-            
+
             x_cen = bbox.get("x_cen", 0)
             y_cen = bbox.get("y_cen", 0)
             width = bbox.get("width", 0)
@@ -81,89 +67,93 @@ class StartClient(QThread):
             ymin = int(y_cen - height / 2)
             xmax = int(x_cen + width / 2)
             ymax = int(y_cen + height / 2)
-            
-            instance['class'] = class_name
-            instance['socre'] = f"{float(score):.2f}"
-            instance['coordinate'] = [[xmin, ymin], [xmin, xmax]]
-            instance['image'] = cv2.cvtColor(image_bgr[ymin:ymax, xmin:xmax, :], cv2.COLOR_BGR2RGB)
 
-            image = self.viz.draw_boxes(image, xmin, ymin, xmax, ymax, class_name, score)
+            instance['class'] = class_name
+            instance['score'] = f"{float(score):.2f}"
+            instance['coordinate'] = [[xmin, ymin], [xmax, ymax]]
+            instance['bbox'] = (xmin, ymin, xmax, ymax)
 
             details.append(instance)
 
-        image = self.viz.draw_elapsed_time(image, elapsed_time)
-
-        return image, details
+        # 返回原始图像和检测结果，绘制交给 converter
+        return image_bgr, details, elapsed_time
         
     def run(self):
         while True:
             start = time.time()
             try:
-                image = self.q.get(timeout=0.05)
+                item = self.q.get(timeout=0.05)
             except queue.Empty:
                 continue
-            
-            ret, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+
+            image, path = item
+
+            # 缩小图像以加快推理速度
+            h, w = image.shape[:2]
+            # if max(h, w) > 640:  # 如果图像太大，缩小到640
+            #     scale = 640 / max(h, w)
+            #     new_w, new_h = int(w * scale), int(h * scale)
+            #     image_resized = cv2.resize(image, (new_w, new_h))
+            # else:
+            #     image_resized = image
+
+            # 测量编码时间
+            encode_start = time.time()
+            ret, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 60])  # 从80降到60
+            encode_time = (time.time() - encode_start) * 1000
+            if encode_time > 10:
+                logger.debug(f"[性能] JPG编码: {encode_time:.2f}ms")
+
             if not ret:
-                print("JPG编码失败")
+                logger.error("JPG编码失败")
                 continue
 
             image_base64 = base64.b64encode(buffer).decode('utf-8')
 
             payload = {
                 'image': image_base64
-                # 'nms': self.nms,
-                # 'reset': False,
-                # 'track_id': None,
-                # 'polygon': self.polygon,
-                # 'confidence': self.confidence,
-                # 'timeout_mins': self.timeout_mins,
-                # 'max_threshold': self.max_detection
             }
 
-            # -------------------------
-            #   带 Session 的 POST 请求 + 重试
-            # -------------------------
-            for attempt in range(2):  # 你的模型很快，最多重试1次即可
+            # 测量API请求时间
+            for attempt in range(2):
                 try:
+                    api_start = time.time()
                     response = self.session.post(
                         self.url,
                         json=payload,
-                        timeout=(1, 3)
+                        timeout=(2, 10)  # 连接超时2秒，读取超时10秒
                     )
+                    api_time = (time.time() - api_start) * 1000
+                    logger.debug(f"[性能] API请求: {api_time:.2f}ms")
+
                     response.raise_for_status()
+
+                    try:
+                        data = response.json()
+                    except:
+                        data = []
+
+                    elapsed = time.time() - start
+                    image, details, elapsed_time = self.postprocess(image, data, elapsed)
+
+                    result_queue.put((image, details, path))
+                    self.q.task_done()
+
                     break
                 except (requests.exceptions.ConnectionError,
                         requests.exceptions.ReadTimeout,
                         requests.exceptions.ConnectTimeout) as e:
 
-                    print(f"[Client] 尝试 {attempt+1} 失败: {e}")
+                    logger.error(f"[Client] 尝试 {attempt+1} 失败: {e}")
 
                     if attempt == 1:
-                        # 两次都失败 → 用空结果
-                        result_queue.put((image, []))
+                        result_queue.put((image, [], path))
                         self.q.task_done()
                         continue
                     else:
-                        time.sleep(0.1)  # 防止高频重连压垮服务
+                        time.sleep(0.1)
                 except Exception as e:
-                    print(f"[Client] 未知异常: {e}")
-                    result_queue.put((image, []))
+                    logger.error(f"[Client] 未知异常: {e}")
+                    result_queue.put((image, [], path))
                     self.q.task_done()
                     continue
-        
-            # -------------------------
-            # POST 成功
-            # -------------------------
-            try:
-                data = response.json()
-            except:
-                data = []
-
-            elapsed = time.time() - start
-            image, details = self.postprocess(image, data, elapsed)
-
-            result_queue.put((image, details))
-            self.q.task_done()
-            
-            print("Client run thread id:", threading.get_ident())

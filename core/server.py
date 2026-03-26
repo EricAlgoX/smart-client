@@ -109,7 +109,7 @@ def stop_all_servers() -> None:
             stop_server(name)
             logger.info(f'killed {name}')
         except Exception as e:
-            print(e)
+            logger.error(e)
             pass
 
 if __name__ == "__main__":

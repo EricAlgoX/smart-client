@@ -13,6 +13,7 @@ from core.client import StartClient
 from PyQt5.QtGui import QImage, QPixmap
 from utils.logger import logger
 from core.converter import ImageConverter
+from utils.profiler import profiler
 
 from core.writer import ImageWriter, LabelWriter
 from core.server import start_server, stop_all_servers
@@ -23,6 +24,8 @@ class MainController:
     def __init__(self, ui):
         self.ui = ui
         self.roi_points = []
+        self.frame = None
+        self.converter = None
         self.timer = QTimer()
         self.timer.timeout.connect(self.next)
         
@@ -35,9 +38,10 @@ class MainController:
         except Exception as e:
             logger.error(f"加载 api.json 失败: {e}")
             self.api = {}
-        self.ui.selectImageButton.clicked.connect(partial[None](self.select_source, "image"))
-        self.ui.selectVideoButton.clicked.connect(partial[None](self.select_source, "folder"))
-        self.ui.selectSourceButton.clicked.connect(partial[None](self.select_source, "stream"))
+        self.ui.selectImageButton.clicked.connect(partial(self.select_source, "image"))
+        self.ui.selectFolderButton.clicked.connect(partial(self.select_source, "folder"))
+        self.ui.selectVideoButton.clicked.connect(partial(self.select_source, "video"))
+        self.ui.selectSourceButton.clicked.connect(partial(self.select_source, "stream"))
         self.ui.selectModelBox.currentIndexChanged.connect(self.select_model)
         self.ui.nmsSpinBox.valueChanged.connect(self.nmsspinbox_changed)
         self.ui.nmsSlider.valueChanged.connect(self.nmsslider_changed)
@@ -81,13 +85,17 @@ class MainController:
         if self.source:
             self.ui.log_edit.append(f'已选择: {self.source['stream_name']}')
             self.ui.label.setStyleSheet("background-color: transparent;")
-            result_queue.put((self.source['frame'], []))
+            result_queue.put((self.source['frame'], [], self.source['frame_name']))
         else:
             QMessageBox.critical(self.ui, 'Error', 'Please select again')
 
+        # 停止旧的 converter 线程
+        if self.converter is not None:
+            self.converter.stop()
+
         self.converter = ImageConverter(
-            result_queue, 
-            self._get_label_size, 
+            result_queue,
+            self._get_label_size,
             fps_limit=20
             )
         self.converter.pixmap_ready.connect(self.display)
@@ -96,7 +104,7 @@ class MainController:
         self.timer.stop()  # 必须先 stop
         self.start_flag = False
         if self.source_type == 'stream':
-            interval = 33
+            interval = 33  # 从33ms改为100ms，降低到10fps
             self.timer.start(interval)
 
     def select_model(self, index):
@@ -138,7 +146,7 @@ class MainController:
     def startDetection(self):
         if self.source_type == 'image':
             if hasattr(self, "client_thread"):
-                image_queue.put(self.source['frame'])
+                image_queue.put((self.source['frame'], self.source['frame_name']))
             else:
                 self.ui.log_edit.append("未选择有效的模型")
         
@@ -148,12 +156,11 @@ class MainController:
             if not self.start_flag:
                 self.start_flag = True
                 if hasattr(self, "client_thread"):
-                    image_queue.put(self.source['frame'])
+                    image_queue.put((self.source['frame'], self.source['frame_name']))
                 else:
                     self.ui.log_edit.append("未选择有效的模型")
 
-
-                interval = 100
+                interval = 33
                 self.timer.start(interval)
                 self.ui.startDetectionButton.setText("停止检测")
                 return
@@ -166,7 +173,7 @@ class MainController:
                 if hasattr(self, "client_thread"):
                     self.start_flag = True
                     try:
-                        image_queue.put(self.source['frame'])
+                        image_queue.put((self.source['frame'], self.source['frame_name']))
                     except:
                         pass
                     self.ui.startDetectionButton.setText("停止检测")
@@ -177,11 +184,15 @@ class MainController:
                 self.start_flag = False
                 self.ui.startDetectionButton.setText("开始检测")
     
+    @profiler.measure("next")
     def next(self):
         self.source['frame'], self.source['frame_name'] = self.source['stream'].read()
         if self.source['frame'] is None:
             self.timer.stop()
+            self.start_flag = False
+            self.ui.startDetectionButton.setText("开始检测")
             QMessageBox.information(self.ui, "Finished", "All data have been processed.")
+            return  # 立即返回，不再执行后续代码
 
         if self.ui.saveDataButton.isChecked() and self.source_type in ['video', 'stream']:
             if hasattr(self, 'image_writer'):
@@ -190,41 +201,50 @@ class MainController:
         # 异步启动推理（不阻塞UI）
         if hasattr(self, "client_thread") and self.start_flag:
             try:
-                image_queue.put(self.source['frame'])
-                print('self.image_queue size:', image_queue.qsize(), 'self.result_queue size:', result_queue.qsize())
+                image_queue.put((self.source['frame'], self.source['frame_name']))
+                logger.debug(f'image_queue size: {image_queue.qsize()}, result_queue size: {result_queue.qsize()}')
             except Exception as e:
                 logger.error(e)
         else:
             try:
-                result_queue.put((self.source['frame'], []))
+                result_queue.put((self.source['frame'], [], self.source['frame_name']))
             except:
                 pass
     
+    @profiler.measure("tabel_list")
     def tabel_list(self, details):
         # 更新表格（限制行数，避免UI卡顿）
         max_rows = min(len(details), self.ui.tableWidget.rowCount())
         for index in range(max_rows):
             instance = details[index]
-            label = QLabel()
-            column_width = self.ui.tableWidget.columnWidth(3)
-            row_height = self.ui.tableWidget.rowHeight(index)
-            label.setFixedSize(column_width, row_height)
 
-            instance_image = instance['image']
-            instance_image = cv2.cvtColor(instance_image, cv2.COLOR_BGR2RGB)
             instance_class = instance['class']
-            instance_score = instance['socre']
+            instance_score = instance['score']
             instance_coordinate = f'{instance['coordinate']}'
 
-            height, width, channel = instance_image.shape
-            bytes_per_line = 3 * width
-            q_image = QImage(instance_image.data, width, height, bytes_per_line, QImage.Format_RGB888).rgbSwapped()
-            pixmap = QPixmap.fromImage(q_image)
-            pixmap = pixmap.scaled(label.size(),
-                                   Qt.KeepAspectRatio,
-                                   Qt.SmoothTransformation
-                                )
-            label.setPixmap(pixmap)
+            # 只在需要时裁剪图像
+            if 'bbox' in instance and hasattr(self, 'current_display_image'):
+                xmin, ymin, xmax, ymax = instance['bbox']
+                instance_image = self.current_display_image[ymin:ymax, xmin:xmax, :].copy()  # 添加 .copy()
+
+                # 创建 QImage
+                height, width, channel = instance_image.shape
+                bytes_per_line = 3 * width
+                q_image = QImage(instance_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
+                pixmap = QPixmap.fromImage(q_image)
+
+                # 创建 label 并设置
+                label = QLabel()
+                column_width = self.ui.tableWidget.columnWidth(3)
+                row_height = self.ui.tableWidget.rowHeight(index)
+                label.setFixedSize(column_width, row_height)
+
+                pixmap = pixmap.scaled(label.size(),
+                                       Qt.KeepAspectRatio,
+                                       Qt.SmoothTransformation
+                                    )
+                label.setPixmap(pixmap)
+                self.ui.tableWidget.setCellWidget(index, 3, label)
 
             instance_class = QTableWidgetItem(instance_class)
             instance_class.setTextAlignment(Qt.AlignCenter)
@@ -234,13 +254,17 @@ class MainController:
             instance_score.setTextAlignment(Qt.AlignCenter)
             self.ui.tableWidget.setItem(index, 1, instance_score)
             self.ui.tableWidget.setItem(index, 2, QTableWidgetItem(instance_coordinate))
-            self.ui.tableWidget.setCellWidget(index, 3, label)
 
-    def display(self, qimg, details=[]):
+    @profiler.measure("display")
+    def display(self, qimg, details=[], path='', original_rgb=None):
+        # 保存原始 RGB 图像供表格使用
+        if original_rgb is not None:
+            self.current_display_image = original_rgb
+
         # 保存推理结果
         if self.ui.saveDataButton.isChecked():
             if hasattr(self, 'label_writer'):
-                self.label_writer.submit(self.source['frame_name'], details, drop_if_full=True)
+                self.label_writer.submit(path, details, drop_if_full=True)
 
         # 显示
         # # 绘制ROI（如果存在）

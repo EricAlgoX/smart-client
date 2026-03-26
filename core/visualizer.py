@@ -6,12 +6,15 @@ from PIL import Image, ImageDraw, ImageFont
 
 class Visualizer:
     def __init__(self):
-        pass
+        self._font_cache = {}
 
     # -------------------------------
-    # 内部方法：获取中文字体
+    # 内部方法：获取中文字体（带缓存）
     # -------------------------------
     def _get_chinese_font(self, font_size: int):
+        if font_size in self._font_cache:
+            return self._font_cache[font_size]
+
         candidate_paths = [
             r"C:\\Windows\\Fonts\\msyh.ttc",
             r"C:\\Windows\\Fonts\\msyh.ttf",
@@ -20,10 +23,15 @@ class Visualizer:
         ]
         for path in candidate_paths:
             try:
-                return ImageFont.truetype(path, font_size)
+                font = ImageFont.truetype(path, font_size)
+                self._font_cache[font_size] = font
+                return font
             except Exception:
                 continue
-        return ImageFont.load_default()
+
+        font = ImageFont.load_default()
+        self._font_cache[font_size] = font
+        return font
 
     # -------------------------------
     # 内部方法：PIL 绘制中文
@@ -40,15 +48,16 @@ class Visualizer:
         return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
     # -------------------------------
-    # 绘制检测框（支持中文）
+    # 绘制检测框（快速版本，使用 OpenCV）
     # -------------------------------
-    def draw_boxes(self, image, xmin, ymin, xmax, ymax, class_name, score, box_color=(0, 255, 0)):
-        # draw box
+    def draw_boxes_fast(self, image, xmin, ymin, xmax, ymax, class_name, score, box_color=(0, 255, 0)):
+        # 绘制框
         cv2.rectangle(image, (xmin, ymin), (xmax, ymax), box_color, 2)
 
-        # draw label text with PIL
+        # 使用 OpenCV 绘制文字（不支持中文，但速度快）
         label = f"{class_name} {float(score):.2f}" if score else class_name
-        image = self._put_text_cn(image, label, (xmin, ymin - 5), font_size=20)
+        cv2.putText(image, label, (xmin, ymin - 5),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
         return image
 
