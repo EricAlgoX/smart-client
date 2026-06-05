@@ -3,7 +3,7 @@
     "name": "车牌识别",
     "icon": "🚗",
     "description": "车辆进出管理，自动识别车牌号码",
-    "models": ["04_licenseplate", "18_vehicle"],
+    "model_config": "plate_detection",
     "alert_rules": {
       "licenseplate": "info",
       "vehicle": "info"
@@ -13,33 +13,31 @@
     "name": "区域入侵",
     "icon": "🚶",
     "description": "非法闯入检测，周界安全防护",
-    "models": ["06_person", "10_areaintrusion"],
+    "model_config": "person_detection",
     "alert_rules": {
-      "person": "warning",
-      "areaintrusion": "alert"
+      "person": "warning"
     }
   },
   "safety_monitoring": {
     "name": "安全检测",
     "icon": "🔥",
     "description": "火灾烟雾检测、安全帽佩戴检查",
-    "models": ["11_fire", "12_smoke", "13_cigarette", "39_riderhelmetcheck"],
+    "model_config": "safety_detection",
     "alert_rules": {
       "fire": "critical",
       "smoke": "critical",
-      "cigarette": "warning",
-      "riderhelmetcheck": "warning"
+      "no_helmet": "warning"
     }
   },
   "community_patrol": {
     "name": "社区巡检",
     "icon": "🏘️",
     "description": "违停检测、垃圾溢出、人群聚集",
-    "models": ["03_illegalparking", "01_overflow", "07_persongather"],
+    "model_config": "community_patrol",
     "alert_rules": {
-      "illegalparking": "warning",
+      "illegal_parking": "warning",
       "overflow": "info",
-      "persongather": "warning"
+      "crowd": "warning"
     }
   }
 }

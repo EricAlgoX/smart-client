@@ -1,16 +1,15 @@
 import os
 import json
 import csv
-import threading
 from datetime import datetime
 from PySide6.QtWidgets import QTableWidgetItem, QMessageBox, QTreeWidgetItem, QFileDialog
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
-from core.client import StartClient
+from core.inference_worker import InferenceWorker
+from engine.manager import engine_manager
 from utils.logger import logger
 from core.converter import ImageConverter
 from utils.profiler import profiler
-from core.server import start_server, stop_all_servers
 from core.stream import select_image, select_stream
 from core.queue import image_queue, result_queue
 from ui.settings_dialog import SettingsDialog
@@ -25,12 +24,14 @@ class MainController:
         self.roi_points = []
         self.frame = None
         self.converter = None
+        self.inference_worker = None
         self.current_scene = None
         self.alert_count = 0
         self._sources = {}
+        self._current_source_type = None
 
         # 检测记录
-        self.records = []  # [{'time', 'scene', 'type', 'detail', 'frame'}]
+        self.records = []
 
         # 定时器
         self.timer = QTimer()
@@ -41,9 +42,8 @@ class MainController:
         self._confidence = 0.3
         self._timeout = 3
 
-        # 加载场景和 API
+        # 加载场景
         self._load_scenes()
-        self._load_api()
         self._setup_connections()
 
     # ────────────────────────────────────────
@@ -60,16 +60,6 @@ class MainController:
         except Exception as e:
             logger.error(f"加载场景配置失败: {e}")
             self.scenes = {}
-
-    def _load_api(self):
-        """加载 API 配置"""
-        try:
-            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "api.json")
-            with open(config_path, "r", encoding="utf-8") as f:
-                self.api = json.load(f)
-        except Exception as e:
-            logger.error(f"加载 api.json 失败: {e}")
-            self.api = {}
 
     def _setup_connections(self):
         """绑定所有信号"""
@@ -92,7 +82,7 @@ class MainController:
     #  场景切换
     # ────────────────────────────────────────
     def _on_scene_changed(self, index):
-        """切换检测场景"""
+        """切换检测场景 — 加载对应引擎"""
         scene_key = self.ui.sceneBox.currentData()
         if not scene_key or scene_key not in self.scenes:
             return
@@ -100,26 +90,45 @@ class MainController:
         self.current_scene = self.scenes[scene_key]
         scene_name = self.current_scene['name']
 
-        # 停止旧服务
-        stop_all_servers()
+        # 加载模型配置
+        model_config_name = self.current_scene.get('model_config', '')
+        if not model_config_name:
+            self.ui.log_edit.append(f"场景 {scene_name} 未配置模型")
+            return
 
-        # 启动场景关联的模型服务
-        for model_name in self.current_scene.get('models', []):
-            if model_name in self.api:
-                threading.Thread(
-                    target=start_server,
-                    args=(model_name,),
-                    daemon=True
-                ).start()
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "models", "configs", f"{model_config_name}.json"
+        )
+
+        if not os.path.exists(config_path):
+            self.ui.log_edit.append(f"模型配置不存在: {model_config_name}.json")
+            return
+
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                model_config = json.load(f)
+        except Exception as e:
+            self.ui.log_edit.append(f"加载模型配置失败: {e}")
+            return
+
+        # 卸载旧引擎，加载新引擎
+        engine_manager.unload_all()
+        success = engine_manager.load_model(model_config_name, model_config)
+
+        if success:
+            engine_type = model_config.get('engine_type', 'mock')
+            self.ui.log_edit.append(f"已切换场景: {scene_name} (引擎: {engine_type})")
+        else:
+            self.ui.log_edit.append(f"❌ 场景切换失败: {scene_name}")
 
         # 更新状态栏
         self.ui.statusSceneLabel.setText(f"场景: {scene_name}")
         self.ui.statsSceneLabel.setText(scene_name)
-        self.ui.log_edit.append(f"已切换场景: {scene_name}")
 
-        # 如果已有源，重新创建客户端
-        if hasattr(self, '_current_source_type') and self._current_source_type:
-            self._create_client()
+        # 如果已有源且推理线程在跑，重建推理线程
+        if self.inference_worker is not None:
+            self._create_inference_worker()
 
     # ────────────────────────────────────────
     #  源管理
@@ -137,14 +146,13 @@ class MainController:
 
         # 异步连接（视频流）
         if result and 'worker' in result:
-            # 停掉旧的连接线程
             if hasattr(self, '_connect_worker') and self._connect_worker is not None:
                 self._connect_worker.terminate()
                 self._connect_worker.wait(1000)
                 self._connect_worker = None
 
             worker = result['worker']
-            self._connect_worker = worker  # 持有引用，防止 GC 回收
+            self._connect_worker = worker
             source_name = result['stream_name']
             self.ui.log_edit.append(f"正在连接摄像头: {source_name} ...")
             self.ui.label.setText("⏳ 正在连接摄像头...")
@@ -171,7 +179,6 @@ class MainController:
             'frame_name': frame_name,
         }
         self._activate_source(self.source)
-        # 自动开始检测
         self.start_flag = True
         self.timer.start(33)
         self.ui.log_edit.append(f"✅ 摄像头已连接: {source_name}，自动开始检测")
@@ -202,40 +209,26 @@ class MainController:
         self.converter.pixmap_ready.connect(self.display)
         self.converter.start()
 
-        self._create_client()
+        self._create_inference_worker()
 
-    def _create_client(self):
-        """为当前场景和源创建推理客户端"""
-        if not self.current_scene:
+    def _create_inference_worker(self):
+        """创建推理工作线程"""
+        # 停掉旧的
+        if self.inference_worker is not None:
+            self.inference_worker.stop()
+            self.inference_worker = None
+
+        if not engine_manager.is_loaded:
             self.ui.log_edit.append("请先选择检测场景")
             return
 
-        models = self.current_scene.get('models', [])
-        if not models:
-            return
-
-        # 停掉旧的推理线程
-        if hasattr(self, 'client_thread') and self.client_thread is not None:
-            self.client_thread.terminate()
-            self.client_thread.wait(1000)
-            self.client_thread = None
-
-        # 使用第一个模型作为主模型
-        model_name = models[0]
-        if model_name not in self.api:
-            self.ui.log_edit.append(f"模型 {model_name} 未配置 API")
-            return
-
-        self.client_thread = StartClient(
-            url=self.api[model_name],
+        self.inference_worker = InferenceWorker(
             input_queue=image_queue,
-            nms=self._nms,
-            polygon=self.roi_points,
             confidence=self._confidence,
-            timeout_mins=self._timeout,
+            nms=self._nms,
         )
-        self.client_thread.start()
-        self.ui.log_edit.append(f"推理客户端已就绪: {model_name}")
+        self.inference_worker.start()
+        self.ui.log_edit.append("推理引擎已就绪")
 
     def _get_label_size(self):
         try:
@@ -250,7 +243,7 @@ class MainController:
         if not hasattr(self, 'source') or self.source is None:
             self.ui.log_edit.append("请先接入摄像头或打开图片")
             return
-        if not hasattr(self, 'client_thread'):
+        if self.inference_worker is None:
             self.ui.log_edit.append("请先选择检测场景")
             return
 
@@ -258,7 +251,6 @@ class MainController:
             image_queue.put((self.source['frame'], self.source['frame_name']))
             return
 
-        # 摄像头模式：切换播放/暂停
         if not self.start_flag:
             self.start_flag = True
             try:
@@ -284,7 +276,7 @@ class MainController:
             self.ui.log_edit.append("视频流已结束")
             return
 
-        if hasattr(self, "client_thread") and self.start_flag:
+        if self.inference_worker is not None and self.start_flag:
             try:
                 image_queue.put((self.source['frame'], self.source['frame_name']))
             except Exception as e:
@@ -306,14 +298,13 @@ class MainController:
         qpix = QPixmap.fromImage(qimg)
         self.ui.label.setPixmap(qpix)
 
-        # 处理检测结果
         if details:
             self._process_alerts(details)
             self._update_records(details)
             self._update_stats(details)
 
     def _process_alerts(self, details):
-        """处理告警：在右侧告警列表中显示"""
+        """处理告警"""
         scene_key = self.ui.sceneBox.currentData()
         scene = self.scenes.get(scene_key, {})
         alert_rules = scene.get('alert_rules', {})
@@ -323,7 +314,6 @@ class MainController:
             score = float(det.get('score', 0))
             level = alert_rules.get(class_name, 'info')
 
-            # 只有超过置信度阈值的才显示
             if score < self._confidence:
                 continue
 
@@ -343,7 +333,6 @@ class MainController:
             ])
             self.ui.alertList.insertTopLevelItem(0, item)
 
-            # 限制告警列表长度
             if self.ui.alertList.topLevelItemCount() > 100:
                 self.ui.alertList.takeTopLevelItem(100)
 
@@ -369,7 +358,6 @@ class MainController:
             self.ui.recordTable.setItem(row, 3, QTableWidgetItem(f"{score:.0%}"))
             self.ui.recordTable.setItem(row, 4, QTableWidgetItem("📷"))
 
-            # 保存到内存
             self.records.append({
                 'time': now,
                 'scene': scene_name,
@@ -377,7 +365,6 @@ class MainController:
                 'detail': f"{score:.0%}",
             })
 
-            # 限制表格行数
             if self.ui.recordTable.rowCount() > 500:
                 self.ui.recordTable.removeRow(0)
 
@@ -392,7 +379,6 @@ class MainController:
     #  设置
     # ────────────────────────────────────────
     def _open_settings(self):
-        """打开设置弹窗"""
         dlg = SettingsDialog(
             self.window,
             nms=self._nms,
@@ -403,15 +389,18 @@ class MainController:
             self._nms = dlg.nmsSpin.value()
             self._confidence = dlg.conSpin.value()
             self._timeout = dlg.timeoutSpin.value()
+            # 更新推理线程参数
+            if self.inference_worker is not None:
+                self.inference_worker.confidence = self._confidence
+                self.inference_worker.nms = self._nms
             self.ui.log_edit.append(
-                f"设置已更新: NMS={self._nms:.2f}, 置信度={self._confidence:.2f}, 超时={self._timeout}s"
+                f"设置已更新: NMS={self._nms:.2f}, 置信度={self._confidence:.2f}"
             )
 
     # ────────────────────────────────────────
     #  导出
     # ────────────────────────────────────────
     def _export_records(self):
-        """导出检测记录为 CSV"""
         if not self.records:
             QMessageBox.information(self.window, "提示", "暂无检测记录可导出")
             return
@@ -433,3 +422,9 @@ class MainController:
             QMessageBox.information(self.window, "导出成功", f"已导出 {len(self.records)} 条记录")
         except Exception as e:
             self.ui.log_edit.append(f"❌ 导出失败: {e}")
+
+    def cleanup(self):
+        """清理资源"""
+        if self.inference_worker is not None:
+            self.inference_worker.stop()
+        engine_manager.unload_all()

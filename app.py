@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from utils.logger import logger
 from utils.general import gradient_text
-from core.server import stop_all_servers
+from engine.manager import engine_manager
 from controller.main_controller import MainController
 from info import __appname__, __preferred_device__, __url__, __version__
 
@@ -393,7 +393,9 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     def closeEvent(self, event):
-        stop_all_servers()
+        if hasattr(self, 'controller'):
+            self.controller.cleanup()
+        engine_manager.unload_all()
         super().closeEvent(event)
 
 

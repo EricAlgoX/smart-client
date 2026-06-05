@@ -1,0 +1,7 @@
+{
+    "engine_type": "pt",
+    "model_path": "model/best.pt",
+    "input_size": [640, 640],
+    "class_names": ["person"],
+    "description": "行人检测（当前为模拟模式，放入 onnx 模型后改为 engine_type: onnx）"
+}
