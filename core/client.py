@@ -5,14 +5,15 @@ import base64
 import requests
 import threading
 from utils.logger import logger
-from PyQt5.QtCore import QThread
+from PySide6.QtCore import QThread
 from core.queue import result_queue
 from core.visualizer import Visualizer
 from utils.profiler import profiler
 
+
 class StartClient(QThread):
     def __init__(
-        self, 
+        self,
         url,
         input_queue,
 
@@ -43,7 +44,7 @@ class StartClient(QThread):
 
         # 创建 Session
         self.session = requests.Session()
-        self.session.headers.update({"Connection": "keep-alive"})  # 默认就会启用 Keep-Alive
+        self.session.headers.update({"Connection": "keep-alive"})
 
     @profiler.measure("postprocess")
     def postprocess(self, image_bgr, result, elapsed_time):
@@ -77,7 +78,7 @@ class StartClient(QThread):
 
         # 返回原始图像和检测结果，绘制交给 converter
         return image_bgr, details, elapsed_time
-        
+
     def run(self):
         while True:
             start = time.time()
@@ -88,18 +89,9 @@ class StartClient(QThread):
 
             image, path = item
 
-            # 缩小图像以加快推理速度
-            h, w = image.shape[:2]
-            # if max(h, w) > 640:  # 如果图像太大，缩小到640
-            #     scale = 640 / max(h, w)
-            #     new_w, new_h = int(w * scale), int(h * scale)
-            #     image_resized = cv2.resize(image, (new_w, new_h))
-            # else:
-            #     image_resized = image
-
             # 测量编码时间
             encode_start = time.time()
-            ret, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 60])  # 从80降到60
+            ret, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 60])
             encode_time = (time.time() - encode_start) * 1000
             if encode_time > 10:
                 logger.debug(f"[性能] JPG编码: {encode_time:.2f}ms")

@@ -4,7 +4,7 @@ import textwrap
 import platform
 import subprocess
 from typing import Iterator, Tuple
-from importlib_metadata import version as get_package_version
+from importlib.metadata import version as get_package_version
 
 
 def format_bold(text):
@@ -83,7 +83,7 @@ def collect_system_info():
     gpu_info = get_gpu_info()
     cuda_info = get_cuda_version()
     python_info = platform.python_version()
-    pyqt5_info = get_installed_package_version("PyQt5")
+    pyside6_info = get_installed_package_version("PySide6")
     onnx_info = get_installed_package_version("onnx")
     ort_info = get_installed_package_version("onnxruntime")
     ort_gpu_info = get_installed_package_version("onnxruntime-gpu")
@@ -99,7 +99,7 @@ def collect_system_info():
         "Python Version": python_info,
     }
     pkg_info = {
-        "PyQt5 Version": pyqt5_info,
+        "PySide6 Version": pyside6_info,
         "ONNX Version": onnx_info,
         "ONNX Runtime Version": ort_info,
         "ONNX Runtime GPU Version": ort_gpu_info,

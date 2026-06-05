@@ -1,16 +1,17 @@
 import cv2
 import queue
 import traceback
-from PyQt5.QtGui import QImage
-from PyQt5.QtCore import pyqtSignal, QThread
+from PySide6.QtGui import QImage
+from PySide6.QtCore import Signal, QThread
 from core.visualizer import Visualizer
+
 
 class ImageConverter(QThread):
     """
     后台线程：把 BGR numpy frame 转换为 QPixmap（并做必要的 resize）
     输入通过 input_queue（thread-safe），输出通过信号发回主线程
     """
-    pixmap_ready = pyqtSignal(QImage, object, str, object)  # (qimage, details, path, original_rgb)
+    pixmap_ready = Signal(QImage, object, str, object)  # (qimage, details, path, original_rgb)
 
     def __init__(self, input_queue: queue.Queue, target_size_getter, fps_limit=30):
         super().__init__()
@@ -50,22 +51,18 @@ class ImageConverter(QThread):
 
                 target_size = self.target_size_getter()
                 if target_size is not None and not target_size.isEmpty():
-                    display_rgb = cv2.resize(rgb, (target_size.width(), target_size.height()), interpolation=cv2.INTER_LINEAR)  # 使用更快的插值
+                    display_rgb = cv2.resize(rgb, (target_size.width(), target_size.height()), interpolation=cv2.INTER_LINEAR)
                 else:
                     display_rgb = rgb
 
                 h, w, ch = display_rgb.shape
                 bytes_per_line = ch * w
-                qimg = QImage(display_rgb.copy().data, w, h, bytes_per_line, QImage.Format_RGB888)
+                qimg = QImage(display_rgb.copy().data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
 
                 # 发送给主线程
                 self.pixmap_ready.emit(qimg, details, path, original_rgb)
 
             except Exception:
-                # logger.exception("ImageConverter 处理帧出错")
-                traceback.print_exc()
-            except Exception:
-                # logger.exception("ImageConverter 处理帧出错")
                 traceback.print_exc()
 
     def stop(self):
