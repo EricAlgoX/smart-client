@@ -114,10 +114,13 @@ class _StreamConnectWorker(QThread):
             frame, frame_name = stream.read()
             if frame is None:
                 self.error.emit("无法读取视频帧，请检查地址是否正确")
+                self.quit()
                 return
             self.finished.emit(stream, frame, frame_name or self.source_name)
         except Exception as e:
             self.error.emit(str(e))
+        finally:
+            self.quit()
 
 
 # ══════════════════════════════════════════════
