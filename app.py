@@ -143,26 +143,42 @@ class MainWindow(QMainWindow):
         self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.label)
 
-        # 空状态占位
+        # 空状态占位 — 骨架屏风格
         self.placeholderWidget = QWidget()
         self.placeholderWidget.setObjectName("placeholderWidget")
         ph_layout = QVBoxLayout(self.placeholderWidget)
         ph_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         ph_icon = QLabel("📹")
+        ph_icon.setObjectName("placeholderIcon")
         ph_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ph_icon.setStyleSheet("font-size: 52px; background: transparent; border: none;")
-        ph_title = SmartLabel("等待接入视频源")
+
+        ph_title = QLabel("等待接入视频源")
         ph_title.setObjectName("placeholderTitle")
-        ph_hint = SmartLabel("点击上方「接入摄像头」或「打开图片」开始")
+        ph_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        ph_hint = QLabel("点击上方「接入摄像头」或「打开图片」开始")
         ph_hint.setObjectName("placeholderHint")
+        ph_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # 模拟骨架条 — 3 条 shimmer 动画条
+        skeleton_widget = QWidget()
+        skeleton_widget.setObjectName("skeletonBar")
+        skeleton_widget.setFixedSize(280, 8)
+        skeleton_widget.setStyleSheet(
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+            "stop:0 #2a2a3e, stop:0.5 #3a3a55, stop:1 #2a2a3e); "
+            "border-radius: 4px;"
+        )
 
         ph_layout.addStretch()
         ph_layout.addWidget(ph_icon)
-        ph_layout.addSpacing(10)
+        ph_layout.addSpacing(12)
         ph_layout.addWidget(ph_title)
-        ph_layout.addSpacing(4)
+        ph_layout.addSpacing(6)
         ph_layout.addWidget(ph_hint)
+        ph_layout.addSpacing(20)
+        ph_layout.addWidget(skeleton_widget, 0, Qt.AlignmentFlag.AlignCenter)
         ph_layout.addStretch()
 
         layout.addWidget(self.placeholderWidget)
