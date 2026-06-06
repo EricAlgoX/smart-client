@@ -140,7 +140,9 @@ class MainController:
         if source_type == "image":
             result = select_image(self)
         elif source_type == "camera":
+            logger.info("[Controller] 开始选择摄像头...")
             result = select_stream(self)
+            logger.info(f"[Controller] select_stream 返回: {type(result).__name__}, {result is not None}")
         else:
             return
 
@@ -172,6 +174,7 @@ class MainController:
 
     def _on_stream_connected(self, stream, frame, frame_name, source_name):
         """摄像头连接成功"""
+        logger.info(f"[Controller] _on_stream_connected 被调用, source_name={source_name}, frame_shape={frame.shape if frame is not None else None}")
         self.source = {
             'stream': stream,
             'stream_name': source_name,
@@ -185,6 +188,7 @@ class MainController:
 
     def _on_stream_error(self, error_msg):
         """摄像头连接失败"""
+        logger.error(f"[Controller] _on_stream_error: {error_msg}")
         self.ui.label.setText("连接失败，请重试")
         self.ui.label.setStyleSheet("color: #ef4444; font-size: 14px; background: #0f0f1a;")
         self.ui.log_edit.append(f"❌ 连接失败: {error_msg}")

@@ -39,8 +39,21 @@ class ImageStream:
 class VideoStream:
     def __init__(self, source=0):
         self.video_path = source
-        self.cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+        self.cap = None
+
+        # 根据源类型选择后端：本地摄像头用 DShow，网络流用 FFmpeg
+        if isinstance(source, int):
+            # 本地摄像头：优先 DirectShow（Windows 兼容性最好）
+            self.cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+            if not self.cap.isOpened():
+                # 回退到默认后端
+                self.cap = cv2.VideoCapture(source)
+        else:
+            # 网络流/文件：用 FFmpeg
+            self.cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+
         if not self.cap.isOpened():
             raise RuntimeError(f"无法打开视频源：{source}")
         self.is_video = True
@@ -110,14 +123,18 @@ class _StreamConnectWorker(QThread):
 
     def run(self):
         try:
+            logger.info(f"[StreamWorker] 正在打开视频源: {self.source} (类型: {type(self.source).__name__})")
             stream = VideoStream(self.source)
+            logger.info(f"[StreamWorker] 视频源已打开，正在读取第一帧...")
             frame, frame_name = stream.read()
             if frame is None:
-                self.error.emit("无法读取视频帧，请检查地址是否正确")
+                self.error.emit("无法读取视频帧，请检查摄像头是否被其他程序占用")
                 self.quit()
                 return
+            logger.info(f"[StreamWorker] 第一帧读取成功: {frame.shape}")
             self.finished.emit(stream, frame, frame_name or self.source_name)
         except Exception as e:
+            logger.error(f"[StreamWorker] 连接失败: {e}")
             self.error.emit(str(e))
         finally:
             self.quit()
@@ -185,15 +202,12 @@ def select_folder(self):
 
 
 def select_stream(self):
-    """
-    选择视频流。
-    返回 _StreamConnectWorker（异步）或 dict/None（同步：本地摄像头连接快时直接返回）。
-    """
     options = ["本地摄像头", "RTSP/HTTP 地址", "取消"]
     choice, ok = QInputDialog.getItem(
         self.window, "选择实时流来源", "请选择:", options, 0, False
     )
     if not ok or choice == "取消":
+        logger.info("[select_stream] 用户取消")
         return None
 
     try:
@@ -205,21 +219,24 @@ def select_stream(self):
             if not ok:
                 return None
             source = index
+            logger.info(f"[select_stream] 本地摄像头索引={source}, 类型={type(source).__name__}")
         else:
             url, ok = QInputDialog.getText(
                 self.window, "输入流地址",
-                "请输入 RTSP/HTTP 流地址（例如 rtsp://... 或 http://...）:",
-                text="rtsp://admin:Geovis@13@192.168.110.120:554"
+                "请输入 RTSP/HTTP 流地址:",
+                text="rtsp://admin:password@192.168.1.100:554"
             )
             if not ok:
                 return None
             source = url
+            logger.info(f"[select_stream] 网络流={source}")
 
-        if not source:
+        if source is None or source == "":
+            logger.warning("[select_stream] source 为空")
             return None
 
-        # 返回 worker 由 controller 异步处理
         worker = _StreamConnectWorker(source, source)
+        logger.info(f"[select_stream] 创建worker, source={source}, type={type(source).__name__}")
         return {'worker': worker, 'stream_name': str(source)}
 
     except Exception as e:
