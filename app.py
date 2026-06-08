@@ -19,7 +19,7 @@ from utils.logger import logger
 from utils.general import gradient_text
 from engine.manager import engine_manager
 from controller.main_controller import MainController
-from info import __appname__, __preferred_device__, __url__, __version__
+from info import __appname__, __url__, __version__
 
 
 # ── 漂浮粒子背景 ──

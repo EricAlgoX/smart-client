@@ -1,43 +1,9 @@
 {
-  "plate_recognition": {
-    "name": "车牌识别",
-    "icon": "🚗",
-    "description": "车辆进出管理，自动识别车牌号码",
-    "model_config": "plate_detection",
-    "alert_rules": {
-      "licenseplate": "info",
-      "vehicle": "info"
-    }
-  },
-  "intrusion_detection": {
-    "name": "区域入侵",
-    "icon": "🚶",
-    "description": "非法闯入检测，周界安全防护",
-    "model_config": "person_detection",
-    "alert_rules": {
-      "person": "warning"
-    }
-  },
-  "safety_monitoring": {
-    "name": "安全检测",
-    "icon": "🔥",
-    "description": "火灾烟雾检测、安全帽佩戴检查",
-    "model_config": "safety_detection",
-    "alert_rules": {
-      "fire": "critical",
-      "smoke": "critical",
-      "no_helmet": "warning"
-    }
-  },
-  "community_patrol": {
-    "name": "社区巡检",
-    "icon": "🏘️",
-    "description": "违停检测、垃圾溢出、人群聚集",
-    "model_config": "community_patrol",
-    "alert_rules": {
-      "illegal_parking": "warning",
-      "overflow": "info",
-      "crowd": "warning"
-    }
+  "coco_detection": {
+    "name": "通用检测",
+    "icon": "🔍",
+    "description": "YOLO11n COCO 80类通用目标检测",
+    "model_config": "coco_yolo11n",
+    "alert_rules": {}
   }
 }

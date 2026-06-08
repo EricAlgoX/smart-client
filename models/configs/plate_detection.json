@@ -1,7 +1,0 @@
-{
-    "engine_type": "mock",
-    "model_path": "",
-    "input_size": [640, 640],
-    "class_names": ["licenseplate", "vehicle"],
-    "description": "车牌检测（当前为模拟模式，放入 onnx 模型后改为 engine_type: onnx）"
-}

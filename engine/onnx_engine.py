@@ -78,69 +78,71 @@ class OnnxEngine(BaseEngine):
         return self._postprocess(outputs, orig_w, orig_h, confidence, nms, class_names)
 
     def _postprocess(self, outputs, orig_w, orig_h, conf_thresh, nms_thresh, class_names):
-        """YOLO 标准后处理"""
+        """YOLO 后处理（兼容 YOLOv5/v8/v11 输出格式）"""
         details = []
 
-        # outputs[0] shape 通常为 (1, num_dets, 4+num_classes) 或 (1, 4+num_classes, num_dets)
-        preds = outputs[0]
+        preds = outputs[0]  # (1, 84, 8400) 或 (1, 8400, 84)
 
         if preds.ndim == 3:
-            preds = preds[0]  # 去掉 batch dim
+            preds = preds[0]  # → (84, 8400) 或 (8400, 84)
 
-        # 如果 shape 是 (num_classes+4, num_dets)，转置
+        # YOLO11: (84, 8400) → 转置为 (8400, 84)
+        # YOLOv8: (8400, 84) → 不需要转置
         if preds.shape[0] < preds.shape[1]:
-            preds = preds.T
+            preds = preds.T  # → (8400, 84)
 
-        boxes = []
-        scores = []
-        class_ids = []
+        # 分离坐标和类别分数
+        # 前 4 列: cx, cy, w, h（YOLO cxcywh 格式）
+        # 后 80 列: 类别分数
+        cx = preds[:, 0]
+        cy = preds[:, 1]
+        w = preds[:, 2]
+        h = preds[:, 3]
+        class_scores = preds[:, 4:]
 
-        for det in preds:
-            # 前 4 个是坐标 (x_center, y_center, w, h) 或 (x1, y1, x2, y2)
-            x1, y1, x2, y2 = det[:4]
-            class_scores = det[4:]
-            cls_id = int(np.argmax(class_scores))
-            score = float(class_scores[cls_id])
+        # 每个预测的最大类别分数
+        max_scores = np.max(class_scores, axis=1)
+        cls_ids = np.argmax(class_scores, axis=1)
 
-            if score < conf_thresh:
-                continue
+        # 置信度过滤
+        mask = max_scores >= conf_thresh
+        cx, cy, w, h = cx[mask], cy[mask], w[mask], h[mask]
+        max_scores = max_scores[mask]
+        cls_ids = cls_ids[mask]
 
-            # 坐标映射回原图
-            scale_x = orig_w / self._input_size[0]
-            scale_y = orig_h / self._input_size[1]
+        if len(max_scores) == 0:
+            return []
 
-            # 如果是 xywh 格式，转换为 xyxy
-            if x2 > x1 and y2 > y1:
-                # 已经是 xyxy
-                xmin = int(max(0, x1 * scale_x))
-                ymin = int(max(0, y1 * scale_y))
-                xmax = int(min(orig_w, x2 * scale_x))
-                ymax = int(min(orig_h, y2 * scale_y))
-            else:
-                # xywh 格式
-                cx, cy, w, h = x1, y1, x2, y2
-                xmin = int(max(0, (cx - w / 2) * scale_x))
-                ymin = int(max(0, (cy - h / 2) * scale_y))
-                xmax = int(min(orig_w, (cx + w / 2) * scale_x))
-                ymax = int(min(orig_h, (cy + h / 2) * scale_y))
+        # cxcywh → xyxy
+        scale_x = orig_w / self._input_size[0]
+        scale_y = orig_h / self._input_size[1]
 
-            boxes.append([xmin, ymin, xmax, ymax])
-            scores.append(score)
-            class_ids.append(cls_id)
+        x1 = (cx - w / 2) * scale_x
+        y1 = (cy - h / 2) * scale_y
+        x2 = (cx + w / 2) * scale_x
+        y2 = (cy + h / 2) * scale_y
+
+        # 裁剪到图像范围
+        x1 = np.clip(x1, 0, orig_w).astype(int)
+        y1 = np.clip(y1, 0, orig_h).astype(int)
+        x2 = np.clip(x2, 0, orig_w).astype(int)
+        y2 = np.clip(y2, 0, orig_h).astype(int)
+
+        boxes = np.stack([x1, y1, x2, y2], axis=1).tolist()
+        scores = max_scores.tolist()
 
         # NMS
-        if boxes:
-            indices = cv2.dnn.NMSBoxes(boxes, scores, conf_thresh, nms_thresh)
-            if len(indices) > 0:
-                for i in indices.flatten():
-                    cls_name = class_names[class_ids[i]] if class_ids[i] < len(class_names) else str(class_ids[i])
-                    xmin, ymin, xmax, ymax = boxes[i]
-                    details.append({
-                        'class': cls_name,
-                        'score': f"{scores[i]:.2f}",
-                        'bbox': (xmin, ymin, xmax, ymax),
-                        'coordinate': [[xmin, ymin], [xmax, ymax]],
-                    })
+        indices = cv2.dnn.NMSBoxes(boxes, scores, conf_thresh, nms_thresh)
+        if len(indices) > 0:
+            for i in indices.flatten():
+                cls_name = class_names[int(cls_ids[i])] if int(cls_ids[i]) < len(class_names) else str(int(cls_ids[i]))
+                xmin, ymin, xmax, ymax = int(boxes[i][0]), int(boxes[i][1]), int(boxes[i][2]), int(boxes[i][3])
+                details.append({
+                    'class': cls_name,
+                    'score': f"{scores[i]:.2f}",
+                    'bbox': (xmin, ymin, xmax, ymax),
+                    'coordinate': [[xmin, ymin], [xmax, ymax]],
+                })
 
         return details
 

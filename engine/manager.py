@@ -30,8 +30,8 @@ class EngineManager:
             from engine.onnx_engine import OnnxEngine
             engine = OnnxEngine()
         else:
-            from engine.mock_engine import MockEngine
-            engine = MockEngine()
+            logger.error(f"[EngineManager] 不支持的引擎类型: {engine_type}")
+            return False
 
         success = engine.load(config)
         if success:
