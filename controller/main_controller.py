@@ -46,6 +46,10 @@ class MainController:
         self._load_scenes()
         self._setup_connections()
 
+        # 默认加载第一个场景的模型
+        if self.ui.sceneBox.count() > 0:
+            self._on_scene_changed(0)
+
     # ────────────────────────────────────────
     #  初始化
     # ────────────────────────────────────────
