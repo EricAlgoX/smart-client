@@ -67,4 +67,4 @@ class ImageConverter(QThread):
 
     def stop(self):
         self._running = False
-        self.wait(timeout=500)
+        self.wait(500)

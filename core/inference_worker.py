@@ -57,4 +57,4 @@ class InferenceWorker(QThread):
 
     def stop(self):
         self._running = False
-        self.wait(timeout=2000)
+        self.wait(2000)

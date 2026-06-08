@@ -37,12 +37,14 @@ class VideoStream:
         self.video_path = source
         self.cap = None
 
-        # 根据源类型选择后端：本地摄像头用 DShow，网络流用 FFmpeg
+        # 根据源类型选择后端
         if isinstance(source, int):
+            # 本地摄像头：DirectShow（Windows 兼容性最好）
             self.cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
             if not self.cap.isOpened():
                 self.cap = cv2.VideoCapture(source)
         else:
+            # 网络流/文件：FFmpeg（跟旧版一致）
             self.cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
 
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
@@ -61,27 +63,25 @@ class VideoStream:
 
 
 class _StreamConnectWorker(QThread):
-    """后台线程：打开视频流并读取第一帧，完成后通过信号通知主线程"""
+    """后台线程：读取第一帧（VideoStream 在主线程已创建）"""
     finished = Signal(object, object, str)
     error = Signal(str)
 
-    def __init__(self, source, source_name):
+    def __init__(self, stream, source_name):
         super().__init__()
-        self.source = source
+        self.stream = stream
         self.source_name = str(source_name)
 
     def run(self):
         try:
-            logger.info(f"[StreamWorker] 正在打开视频源: {self.source} (类型: {type(self.source).__name__})")
-            stream = VideoStream(self.source)
-            logger.info(f"[StreamWorker] 视频源已打开，正在读取第一帧...")
-            frame, frame_name = stream.read()
+            logger.info(f"[StreamWorker] 正在读取第一帧...")
+            frame, frame_name = self.stream.read()
             if frame is None:
                 self.error.emit("无法读取视频帧，请检查摄像头是否被其他程序占用")
                 self.quit()
                 return
             logger.info(f"[StreamWorker] 第一帧读取成功: {frame.shape}")
-            self.finished.emit(stream, frame, frame_name or self.source_name)
+            self.finished.emit(self.stream, frame, frame_name or self.source_name)
         except Exception as e:
             logger.error(f"[StreamWorker] 连接失败: {e}")
             self.error.emit(str(e))
@@ -131,7 +131,7 @@ def select_stream(self):
             url, ok = QInputDialog.getText(
                 self.window, "输入流地址",
                 "请输入 RTSP/HTTP 流地址:",
-                text="rtsp://admin:password@192.168.1.100:554"
+                text="rtsp://admin:Geovis@13@192.168.110.120:554"
             )
             if not ok:
                 return None
@@ -142,8 +142,16 @@ def select_stream(self):
             logger.warning("[select_stream] source 为空")
             return None
 
-        worker = _StreamConnectWorker(source, source)
-        logger.info(f"[select_stream] 创建worker, source={source}, type={type(source).__name__}")
+        # 主线程创建 VideoStream（FFmpeg/DShow 需要在主线程初始化）
+        try:
+            stream = VideoStream(source)
+        except Exception as e:
+            logger.error(f"[select_stream] 打开视频源失败: {e}")
+            return None
+
+        # 后台线程读取第一帧
+        worker = _StreamConnectWorker(stream, source)
+        logger.info(f"[select_stream] 创建worker, source={source}")
         return {'worker': worker, 'stream_name': str(source)}
 
     except Exception as e:
