@@ -182,6 +182,13 @@ QStatusBar {
     font-size: 48px; background: transparent; border: none;
     color: #3a3a55;
 }
+/* 骨架条 shimmer 效果 */
+#skeletonBar {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #1a1a2e, stop:0.3 #2a2a3e, stop:0.5 #3a3a55,
+        stop:0.7 #2a2a3e, stop:1 #1a1a2e);
+    border-radius: 4px;
+}
 
 
 /* ══════════════════════════════════
@@ -237,12 +244,17 @@ QGroupBox::title {
 
 
 /* ══════════════════════════════════
-   10. 统计面板
+   10. 统计面板 — 卡片式
    ══════════════════════════════════ */
-#statsKey { color: #64748b; font-size: 11px; background: transparent; border: none; }
-#statsValue {
-    color: #60a5fa; font-size: 16px; font-weight: bold;
+#statsKey {
+    color: #64748b; font-size: 11px;
     background: transparent; border: none;
+    padding: 6px 0;
+}
+#statsValue {
+    color: #60a5fa; font-size: 18px; font-weight: bold;
+    background: transparent; border: none;
+    padding: 6px 0;
 }
 
 

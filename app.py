@@ -163,11 +163,6 @@ class MainWindow(QMainWindow):
         skeleton_widget = QWidget()
         skeleton_widget.setObjectName("skeletonBar")
         skeleton_widget.setFixedSize(280, 8)
-        skeleton_widget.setStyleSheet(
-            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-            "stop:0 #2a2a3e, stop:0.5 #3a3a55, stop:1 #2a2a3e); "
-            "border-radius: 4px;"
-        )
 
         ph_layout.addStretch()
         ph_layout.addWidget(ph_icon)
@@ -216,13 +211,13 @@ class MainWindow(QMainWindow):
         stats_layout.setContentsMargins(8, 16, 8, 8)
         stats_layout.setSpacing(8)
 
-        self.statsCountLabel = SmartLabel("0")
+        self.statsCountLabel = QLabel("0")
         self.statsCountLabel.setObjectName("statsValue")
-        self.statsAlertLabel = SmartLabel("0")
+        self.statsAlertLabel = QLabel("0")
         self.statsAlertLabel.setObjectName("statsValue")
-        self.statsFpsLabel = SmartLabel("--")
+        self.statsFpsLabel = QLabel("--")
         self.statsFpsLabel.setObjectName("statsValue")
-        self.statsSceneLabel = SmartLabel("未选择")
+        self.statsSceneLabel = QLabel("未选择")
         self.statsSceneLabel.setObjectName("statsValue")
 
         for row, (name, widget) in enumerate([
@@ -231,7 +226,7 @@ class MainWindow(QMainWindow):
             ("当前帧率", self.statsFpsLabel),
             ("当前场景", self.statsSceneLabel),
         ]):
-            lbl = SmartLabel(name)
+            lbl = QLabel(name)
             lbl.setObjectName("statsKey")
             stats_layout.addWidget(lbl, row, 0)
             stats_layout.addWidget(widget, row, 1)
@@ -248,7 +243,7 @@ class MainWindow(QMainWindow):
         header = QWidget()
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(4, 0, 4, 0)
-        title = SmartLabel("检测记录")
+        title = QLabel("检测记录")
         title.setObjectName("recordTitle")
         header_layout.addWidget(title)
         header_layout.addStretch()
@@ -288,7 +283,7 @@ class MainWindow(QMainWindow):
         self.addToolBar(toolbar)
 
         # 场景选择
-        scene_label = SmartLabel("  场景: ")
+        scene_label = QLabel("  场景: ")
         scene_label.setObjectName("toolbarLabel")
         toolbar.addWidget(scene_label)
 
@@ -325,7 +320,7 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
-        ver_label = SmartLabel(f"v{__version__}")
+        ver_label = QLabel(f"v{__version__}")
         ver_label.setObjectName("versionLabel")
         toolbar.addWidget(ver_label)
 
@@ -337,13 +332,13 @@ class MainWindow(QMainWindow):
         statusbar.setObjectName("statusBar")
         self.setStatusBar(statusbar)
 
-        self.statusDot = SmartLabel("●")
+        self.statusDot = QLabel("●")
         self.statusDot.setObjectName("statusDotRed")
-        self.statusSourceLabel = SmartLabel("未连接")
+        self.statusSourceLabel = QLabel("未连接")
         self.statusSourceLabel.setObjectName("statusItem")
-        self.statusSceneLabel = SmartLabel("场景: --")
+        self.statusSceneLabel = QLabel("场景: --")
         self.statusSceneLabel.setObjectName("statusItem")
-        self.statusTimeLabel = SmartLabel()
+        self.statusTimeLabel = QLabel()
         self.statusTimeLabel.setObjectName("statusItem")
 
         statusbar.addWidget(self.statusDot)
@@ -413,10 +408,6 @@ class MainWindow(QMainWindow):
             self.controller.cleanup()
         engine_manager.unload()
         super().closeEvent(event)
-
-
-# ── 兼容 QLabel 别名 ──
-SmartLabel = QLabel
 
 
 # ══════════════════════════════════════════════
