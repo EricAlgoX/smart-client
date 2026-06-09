@@ -33,7 +33,7 @@ class ImageStream:
 
 
 class VideoStream:
-    def __init__(self, source=0):
+    def __init__(self, source):
         self.video_path = source
         self.cap = None
 
@@ -87,6 +87,25 @@ class _StreamConnectWorker(QThread):
             self.error.emit(str(e))
         finally:
             self.quit()
+
+
+def select_video(self):
+    try:
+        video_name, _ = QFileDialog.getOpenFileName(
+            self.window, "选择视频", "",
+            "视频文件 (*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm)",
+            options=QFileDialog.Option.DontUseNativeDialog
+        )
+        if not video_name:
+            return None
+        stream = VideoStream(video_name)
+        frame, frame_name = stream.read()
+        if frame is None:
+            return None
+        return {'stream': stream, 'stream_name': video_name, 'frame': frame, 'frame_name': frame_name}
+    except Exception as e:
+        logger.error(f"选择视频时出错: {e}")
+        return None
 
 
 def select_image(self):

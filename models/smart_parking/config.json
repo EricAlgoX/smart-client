@@ -1,0 +1,27 @@
+{
+    "name": "智慧停车",
+    "description": "车辆+车牌检测 → 车牌OCR",
+    "pipeline": [
+        {
+            "step": 1,
+            "model": "plate_recognition.onnx",
+            "role": "plate_detection",
+            "input_size": [640, 640],
+            "class_names": ["plate", "double_plate"],
+            "confidence": 0.15
+        },
+        {
+            "step": 2,
+            "model": "plate_ocr.onnx",
+            "role": "plate_ocr",
+            "input_size": [48, 168],
+            "class_names": [],
+            "input_from": "step1_crop",
+            "crop_filter": ["plate", "double_plate"]
+        }
+    ],
+    "alert_rules": {
+        "plate": "info",
+        "double_plate": "info"
+    }
+}

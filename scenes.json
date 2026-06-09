@@ -1,9 +1,12 @@
 {
-  "coco_detection": {
+  "coco_yolo11n": {
     "name": "通用检测",
     "icon": "🔍",
-    "description": "YOLO11n COCO 80类通用目标检测",
-    "model_config": "coco_yolo11n",
-    "alert_rules": {}
+    "description": "YOLO11n COCO 80类通用目标检测"
+  },
+  "smart_parking": {
+    "name": "智慧停车",
+    "icon": "🚗",
+    "description": "违规停车检测 + 车牌识别"
   }
 }

@@ -53,7 +53,23 @@ class OnnxEngine(BaseEngine):
             logger.error(f"[OnnxEngine] 加载失败: {e}")
             return False
 
-    def detect(self, image: np.ndarray, confidence: float = 0.3, nms: float = 0.5) -> List[Dict]:
+    def _letterbox(self, image, target_size):
+        """Letterbox resize：保持宽高比 + 灰色填充（跟 ultralytics YOLO 一致）"""
+        target_w, target_h = target_size
+        h, w = image.shape[:2]
+        scale = min(target_w / w, target_h / h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+        # 灰色画布
+        canvas = np.full((target_h, target_w, 3), 114, dtype=np.uint8)
+        # 居中粘贴
+        dx, dy = (target_w - new_w) // 2, (target_h - new_h) // 2
+        canvas[dy:dy + new_h, dx:dx + new_w] = resized
+
+        return canvas, scale, dx, dy
+
+    def detect(self, image: np.ndarray, confidence: float = 0.3, nms: float = 0.5, **kwargs) -> List[Dict]:
         if not self._loaded or image is None:
             return []
 
@@ -61,8 +77,8 @@ class OnnxEngine(BaseEngine):
         input_w, input_h = self._input_size
         class_names = self._config.get("class_names", [])
 
-        # 前处理：resize + normalize + transpose
-        img = cv2.resize(image, (input_w, input_h))
+        # 前处理：letterbox resize + normalize + transpose（跟 ultralytics YOLO 一致）
+        img, scale, dx, dy = self._letterbox(image, (input_w, input_h))
         img = img.astype(np.float32) / 255.0
         img = np.transpose(img, (2, 0, 1))  # HWC → CHW
         img = np.expand_dims(img, axis=0)    # add batch dim
@@ -74,53 +90,54 @@ class OnnxEngine(BaseEngine):
             logger.error(f"[OnnxEngine] 推理失败: {e}")
             return []
 
-        # 后处理
-        return self._postprocess(outputs, orig_w, orig_h, confidence, nms, class_names)
+        # 后处理（传入 letterbox 参数用于坐标还原）
+        result = self._postprocess(outputs, orig_w, orig_h, confidence, nms, class_names, scale, dx, dy)
+        logger.info(f"[OnnxEngine] 输入 {orig_w}x{orig_h}, conf={confidence}, nms={nms}, 检测到 {len(result)} 个")
+        return result
 
-    def _postprocess(self, outputs, orig_w, orig_h, conf_thresh, nms_thresh, class_names):
-        """YOLO 后处理（兼容 YOLOv5/v8/v11 输出格式）"""
+    def _postprocess(self, outputs, orig_w, orig_h, conf_thresh, nms_thresh, class_names, scale=1.0, dx=0, dy=0):
+        """YOLO 后处理（兼容 YOLOv5/v8/v11 输出格式，支持 letterbox 坐标还原）"""
         details = []
 
-        preds = outputs[0]  # (1, 84, 8400) 或 (1, 8400, 84)
+        preds = outputs[0]  # (1, N, 8400) 或 (1, 8400, N)
 
         if preds.ndim == 3:
-            preds = preds[0]  # → (84, 8400) 或 (8400, 84)
+            preds = preds[0]
 
-        # YOLO11: (84, 8400) → 转置为 (8400, 84)
-        # YOLOv8: (8400, 84) → 不需要转置
         if preds.shape[0] < preds.shape[1]:
-            preds = preds.T  # → (8400, 84)
+            preds = preds.T
 
-        # 分离坐标和类别分数
-        # 前 4 列: cx, cy, w, h（YOLO cxcywh 格式）
-        # 后 80 列: 类别分数
+        num_classes = preds.shape[1] - 4
         cx = preds[:, 0]
         cy = preds[:, 1]
         w = preds[:, 2]
         h = preds[:, 3]
         class_scores = preds[:, 4:]
 
-        # 每个预测的最大类别分数
         max_scores = np.max(class_scores, axis=1)
         cls_ids = np.argmax(class_scores, axis=1)
 
-        # 置信度过滤
+        total_preds = len(max_scores)
         mask = max_scores >= conf_thresh
         cx, cy, w, h = cx[mask], cy[mask], w[mask], h[mask]
         max_scores = max_scores[mask]
         cls_ids = cls_ids[mask]
+        logger.info(f"[OnnxEngine] 总预测 {total_preds} 个, 置信度过滤后 {len(max_scores)} 个 (阈值={conf_thresh}), 类别数={num_classes}")
 
         if len(max_scores) == 0:
             return []
 
-        # cxcywh → xyxy
-        scale_x = orig_w / self._input_size[0]
-        scale_y = orig_h / self._input_size[1]
+        # cxcywh → xyxy（在 letterbox 坐标系中）
+        x1 = cx - w / 2
+        y1 = cy - h / 2
+        x2 = cx + w / 2
+        y2 = cy + h / 2
 
-        x1 = (cx - w / 2) * scale_x
-        y1 = (cy - h / 2) * scale_y
-        x2 = (cx + w / 2) * scale_x
-        y2 = (cy + h / 2) * scale_y
+        # 还原到原图坐标：减去 padding 偏移，除以缩放比例
+        x1 = (x1 - dx) / scale
+        y1 = (y1 - dy) / scale
+        x2 = (x2 - dx) / scale
+        y2 = (y2 - dy) / scale
 
         # 裁剪到图像范围
         x1 = np.clip(x1, 0, orig_w).astype(int)
@@ -135,7 +152,8 @@ class OnnxEngine(BaseEngine):
         indices = cv2.dnn.NMSBoxes(boxes, scores, conf_thresh, nms_thresh)
         if len(indices) > 0:
             for i in indices.flatten():
-                cls_name = class_names[int(cls_ids[i])] if int(cls_ids[i]) < len(class_names) else str(int(cls_ids[i]))
+                cls_idx = int(cls_ids[i])
+                cls_name = class_names[cls_idx] if cls_idx < len(class_names) else str(cls_idx)
                 xmin, ymin, xmax, ymax = int(boxes[i][0]), int(boxes[i][1]), int(boxes[i][2]), int(boxes[i][3])
                 details.append({
                     'class': cls_name,

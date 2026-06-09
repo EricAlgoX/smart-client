@@ -1,80 +1,80 @@
-"""引擎管理器 — 统一管理推理引擎的加载、推理、卸载"""
+"""引擎管理器 — 按场景加载推理流水线"""
 
+import os
+import json
 import numpy as np
 from typing import List, Dict, Optional
-from engine.base import BaseEngine
+from engine.pipeline import Pipeline
 from utils.logger import logger
 
 
 class EngineManager:
-    """管理所有推理引擎的生命周期"""
+    """管理场景推理流水线的生命周期"""
 
     def __init__(self):
-        self._engines: Dict[str, BaseEngine] = {}  # {model_key: engine}
-        self._current_model: Optional[str] = None
+        self._pipeline: Optional[Pipeline] = None
+        self._current_scene: Optional[str] = None
+        self._base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
 
-    def load_model(self, model_key: str, config: dict) -> bool:
+    def load_scene(self, scene_name: str) -> bool:
         """
-        加载指定模型
-        :param model_key: 模型配置名（不含 .json）
-        :param config: 模型配置 dict
+        加载指定场景
+        :param scene_name: 场景文件夹名（如 "smart_parking"）
         """
-        # 如果已经加载了同一个模型，跳过
-        if model_key in self._engines and self._engines[model_key].is_loaded:
-            self._current_model = model_key
-            return True
+        scene_dir = os.path.join(self._base_dir, scene_name)
+        config_path = os.path.join(scene_dir, "config.json")
 
-        engine_type = config.get("engine_type", "mock")
-
-        if engine_type == "onnx":
-            from engine.onnx_engine import OnnxEngine
-            engine = OnnxEngine()
-        else:
-            logger.error(f"[EngineManager] 不支持的引擎类型: {engine_type}")
+        if not os.path.isdir(scene_dir):
+            logger.error(f"[EngineManager] 场景文件夹不存在: {scene_dir}")
             return False
 
-        success = engine.load(config)
+        if not os.path.exists(config_path):
+            logger.error(f"[EngineManager] 场景配置不存在: {config_path}")
+            return False
+
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception as e:
+            logger.error(f"[EngineManager] 读取配置失败: {e}")
+            return False
+
+        # 卸载旧场景
+        self.unload()
+
+        # 加载新场景
+        pipeline = Pipeline(scene_dir, config)
+        success = pipeline.load()
+
         if success:
-            self._engines[model_key] = engine
-            self._current_model = model_key
-            logger.info(f"[EngineManager] 已加载模型: {model_key} ({engine.name})")
+            self._pipeline = pipeline
+            self._current_scene = scene_name
+            logger.info(f"[EngineManager] 场景已加载: {config.get('name', scene_name)}")
         else:
-            logger.error(f"[EngineManager] 加载模型失败: {model_key}")
+            logger.error(f"[EngineManager] 场景加载失败: {scene_name}")
 
         return success
 
     def detect(self, image: np.ndarray, confidence: float = 0.3, nms: float = 0.5) -> List[Dict]:
-        """使用当前模型进行推理"""
-        if self._current_model is None or self._current_model not in self._engines:
+        """使用当前场景进行推理"""
+        if self._pipeline is None or not self._pipeline.is_loaded:
             return []
-        engine = self._engines[self._current_model]
-        if not engine.is_loaded:
-            return []
-        return engine.detect(image, confidence, nms)
+        return self._pipeline.detect(image, confidence, nms)
 
-    def unload_model(self, model_key: str):
-        """卸载指定模型"""
-        if model_key in self._engines:
-            self._engines[model_key].unload()
-            del self._engines[model_key]
-            if self._current_model == model_key:
-                self._current_model = None
-
-    def unload_all(self):
-        """卸载所有模型"""
-        for key in list(self._engines.keys()):
-            self._engines[key].unload()
-        self._engines.clear()
-        self._current_model = None
-        logger.info("[EngineManager] 已卸载所有模型")
+    def unload(self):
+        """卸载当前场景"""
+        if self._pipeline is not None:
+            self._pipeline.unload()
+            self._pipeline = None
+            self._current_scene = None
 
     @property
-    def current_model(self) -> Optional[str]:
-        return self._current_model
+    def current_scene(self) -> Optional[str]:
+        return self._current_scene
 
     @property
     def is_loaded(self) -> bool:
-        return self._current_model is not None and self._current_model in self._engines
+        return self._pipeline is not None and self._pipeline.is_loaded
 
 
 # 全局单例

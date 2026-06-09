@@ -4,21 +4,19 @@ import random
 import logging
 from datetime import datetime
 from PySide6 import QtCore
-from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QIcon, QPainter, QColor, QBrush, QFont
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QSplitter, QGroupBox, QLabel, QPushButton, QComboBox,
-    QDoubleSpinBox, QSlider, QTableWidget, QTableWidgetItem,
-    QTextEdit, QTreeWidget, QTreeWidgetItem, QToolBar,
-    QHeaderView, QAbstractItemView, QSizePolicy,
-    QMessageBox, QApplication, QStatusBar,
+    QTableWidget, QTreeWidget, QToolBar, QHeaderView,
+    QAbstractItemView, QSizePolicy, QApplication, QStatusBar,
 )
 
 from utils.logger import logger
 from utils.general import gradient_text
 from engine.manager import engine_manager
-from controller.main_controller import MainController
+from ui.main_controller import MainController
 from info import __appname__, __url__, __version__
 
 
@@ -303,8 +301,10 @@ class MainWindow(QMainWindow):
 
         # 源操作
         self.tb_act_image = QAction("打开图片", self)
+        self.tb_act_video = QAction("打开视频", self)
         self.tb_act_camera = QAction("接入摄像头", self)
         toolbar.addAction(self.tb_act_image)
+        toolbar.addAction(self.tb_act_video)
         toolbar.addAction(self.tb_act_camera)
 
         toolbar.addSeparator()
@@ -411,7 +411,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         if hasattr(self, 'controller'):
             self.controller.cleanup()
-        engine_manager.unload_all()
+        engine_manager.unload()
         super().closeEvent(event)
 
 

@@ -14,7 +14,7 @@ class BaseEngine(ABC):
         ...
 
     @abstractmethod
-    def detect(self, image: np.ndarray, confidence: float = 0.3, nms: float = 0.5) -> List[Dict]:
+    def detect(self, image: np.ndarray, confidence: float = 0.3, nms: float = 0.5, **kwargs) -> List[Dict]:
         """
         推理接口
         :param image: BGR numpy 图像
