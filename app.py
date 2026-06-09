@@ -141,7 +141,7 @@ class MainWindow(QMainWindow):
         self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.label)
 
-        # 空状态占位 — 骨架屏风格
+        # 空状态占位
         self.placeholderWidget = QWidget()
         self.placeholderWidget.setObjectName("placeholderWidget")
         ph_layout = QVBoxLayout(self.placeholderWidget)
@@ -155,23 +155,23 @@ class MainWindow(QMainWindow):
         ph_title.setObjectName("placeholderTitle")
         ph_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        ph_hint = QLabel("点击上方「接入摄像头」或「打开图片」开始")
+        ph_hint = QLabel("点击上方工具栏选择图片、视频或摄像头")
         ph_hint.setObjectName("placeholderHint")
         ph_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # 模拟骨架条 — 3 条 shimmer 动画条
-        skeleton_widget = QWidget()
-        skeleton_widget.setObjectName("skeletonBar")
-        skeleton_widget.setFixedSize(280, 8)
+        # 骨架条
+        skeleton = QWidget()
+        skeleton.setObjectName("skeletonBar")
+        skeleton.setFixedSize(240, 6)
 
         ph_layout.addStretch()
         ph_layout.addWidget(ph_icon)
-        ph_layout.addSpacing(12)
+        ph_layout.addSpacing(16)
         ph_layout.addWidget(ph_title)
-        ph_layout.addSpacing(6)
+        ph_layout.addSpacing(8)
         ph_layout.addWidget(ph_hint)
-        ph_layout.addSpacing(20)
-        ph_layout.addWidget(skeleton_widget, 0, Qt.AlignmentFlag.AlignCenter)
+        ph_layout.addSpacing(24)
+        ph_layout.addWidget(skeleton, 0, Qt.AlignmentFlag.AlignCenter)
         ph_layout.addStretch()
 
         layout.addWidget(self.placeholderWidget)
