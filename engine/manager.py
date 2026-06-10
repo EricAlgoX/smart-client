@@ -14,7 +14,32 @@ class EngineManager:
     def __init__(self):
         self._pipeline: Optional[Pipeline] = None
         self._current_scene: Optional[str] = None
-        self._base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
+        self._base_dir = self._find_models_dir()
+
+    @staticmethod
+    def _find_models_dir() -> str:
+        """查找 models 目录，兼容打包后和开发环境"""
+        import sys
+        candidates = []
+
+        # PyInstaller 打包后：exe 同级的 _internal/models/
+        if getattr(sys, 'frozen', False):
+            exe_dir = os.path.dirname(sys.executable)
+            candidates.append(os.path.join(exe_dir, "_internal", "models"))
+            candidates.append(os.path.join(exe_dir, "models"))
+
+        # 开发环境：engine/ 的上一级/models/
+        candidates.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "models"))
+
+        for path in candidates:
+            if os.path.isdir(path):
+                logger.info(f"[EngineManager] models 目录: {path}")
+                return path
+
+        # fallback
+        fallback = candidates[-1]
+        logger.warning(f"[EngineManager] models 目录不存在，使用: {fallback}")
+        return fallback
 
     def load_scene(self, scene_name: str) -> bool:
         """

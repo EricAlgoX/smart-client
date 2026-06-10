@@ -1,6 +1,7 @@
 import os
 import cv2
 import time
+from typing import Union
 from utils.logger import logger
 
 from PySide6.QtCore import QThread, Signal
@@ -33,7 +34,7 @@ class ImageStream:
 
 
 class VideoStream:
-    def __init__(self, source):
+    def __init__(self, source: Union[int, str]):
         self.video_path = source
         self.cap = None
 
@@ -63,25 +64,27 @@ class VideoStream:
 
 
 class _StreamConnectWorker(QThread):
-    """后台线程：读取第一帧（VideoStream 在主线程已创建）"""
+    """后台线程：创建 VideoStream + 读取第一帧（避免阻塞 UI）"""
     finished = Signal(object, object, str)
     error = Signal(str)
 
-    def __init__(self, stream, source_name):
+    def __init__(self, source, source_name):
         super().__init__()
-        self.stream = stream
+        self.source = source
         self.source_name = str(source_name)
 
     def run(self):
         try:
-            logger.info(f"[StreamWorker] 正在读取第一帧...")
-            frame, frame_name = self.stream.read()
+            logger.info(f"[StreamWorker] 正在打开视频源: {self.source}")
+            stream = VideoStream(self.source)
+            logger.info(f"[StreamWorker] 视频源已打开，正在读取第一帧...")
+            frame, frame_name = stream.read()
             if frame is None:
                 self.error.emit("无法读取视频帧，请检查摄像头是否被其他程序占用")
                 self.quit()
                 return
             logger.info(f"[StreamWorker] 第一帧读取成功: {frame.shape}")
-            self.finished.emit(self.stream, frame, frame_name or self.source_name)
+            self.finished.emit(stream, frame, frame_name or self.source_name)
         except Exception as e:
             logger.error(f"[StreamWorker] 连接失败: {e}")
             self.error.emit(str(e))
@@ -161,15 +164,8 @@ def select_stream(self):
             logger.warning("[select_stream] source 为空")
             return None
 
-        # 主线程创建 VideoStream（FFmpeg/DShow 需要在主线程初始化）
-        try:
-            stream = VideoStream(source)
-        except Exception as e:
-            logger.error(f"[select_stream] 打开视频源失败: {e}")
-            return None
-
-        # 后台线程读取第一帧
-        worker = _StreamConnectWorker(stream, source)
+        # 全部在后台线程完成（创建 VideoStream + 读取第一帧）
+        worker = _StreamConnectWorker(source, source)
         logger.info(f"[select_stream] 创建worker, source={source}")
         return {'worker': worker, 'stream_name': str(source)}
 

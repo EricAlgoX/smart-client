@@ -136,6 +136,18 @@ smart-client/
 
 代码零改动，重启即可。
 
+## 打包发布
+
+```bash
+pip install pyinstaller
+python build.py
+```
+
+输出 `dist/SmartClient/` 文件夹，打包为 zip 发给用户即可：
+- 用户解压后双击 `SmartClient.exe` 运行
+- 需要 VC++ 运行库（大部分 Windows 已自带）
+- 模型文件已内嵌在 `models/` 目录
+
 ## 作者
 
 - **EricReno** — christopher0527@163.com

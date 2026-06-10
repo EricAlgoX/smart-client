@@ -1,3 +1,4 @@
+import os
 import sys
 import math
 import random
@@ -316,6 +317,23 @@ class MainWindow(QMainWindow):
         self.tb_act_settings = QAction("⚙  设置", self)
         toolbar.addAction(self.tb_act_settings)
 
+        toolbar.addSeparator()
+
+        # 流标签栏：[＋] [标签1] [标签2] ...
+        self.btnAddStream = QPushButton("＋")
+        self.btnAddStream.setObjectName("streamAddBtn")
+        self.btnAddStream.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btnAddStream.setFixedSize(28, 26)
+        toolbar.addWidget(self.btnAddStream)
+
+        self.streamTabsWidget = QWidget()
+        self.streamTabsLayout = QHBoxLayout(self.streamTabsWidget)
+        self.streamTabsLayout.setContentsMargins(0, 0, 0, 0)
+        self.streamTabsLayout.setSpacing(4)
+        toolbar.addWidget(self.streamTabsWidget)
+
+        self._stream_tabs = {}  # {name: QPushButton}
+
         # 右侧版本号
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -371,11 +389,62 @@ class MainWindow(QMainWindow):
     #  辅助方法
     # ────────────────────────────────────────
     def _load_stylesheet(self):
-        try:
-            with open("resources/style.qss", "r", encoding="utf-8") as f:
-                self.setStyleSheet(f.read())
-        except Exception as e:
-            logger.warning(f"加载样式表失败: {e}")
+        import sys
+        # 兼容打包后和开发环境
+        candidates = []
+        if getattr(sys, 'frozen', False):
+            exe_dir = os.path.dirname(sys.executable)
+            candidates.append(os.path.join(exe_dir, "_internal", "resources", "style.qss"))
+            candidates.append(os.path.join(exe_dir, "resources", "style.qss"))
+        candidates.append(os.path.join(os.path.dirname(__file__), "resources", "style.qss"))
+
+        for path in candidates:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    self.setStyleSheet(f.read())
+                return
+        logger.warning(f"加载样式表失败: {candidates}")
+
+    # ── 流标签管理 ──
+    def add_stream_tab(self, name: str, on_click, on_close):
+        """添加一个流标签"""
+        container = QWidget()
+        container.setObjectName("streamTabContainer")
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        tab = QPushButton(f" {name} ")
+        tab.setObjectName("streamTab")
+        tab.setCursor(Qt.CursorShape.PointingHandCursor)
+        tab.setFixedHeight(26)
+        tab.setCheckable(True)
+        tab.clicked.connect(lambda checked, n=name: on_click(n))
+
+        close_btn = QPushButton("✕")
+        close_btn.setObjectName("streamTabClose")
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.setFixedSize(20, 26)
+        close_btn.clicked.connect(lambda checked, n=name: on_close(n))
+
+        layout.addWidget(tab)
+        layout.addWidget(close_btn)
+        self.streamTabsLayout.addWidget(container)
+        self._stream_tabs[name] = container
+
+    def remove_stream_tab(self, name: str):
+        """移除一个流标签"""
+        tab = self._stream_tabs.pop(name, None)
+        if tab:
+            self.streamTabsLayout.removeWidget(tab)
+            tab.deleteLater()
+
+    def switch_stream_tab(self, name: str):
+        """切换选中状态"""
+        for n, container in self._stream_tabs.items():
+            tab_btn = container.findChild(QPushButton, "streamTab")
+            if tab_btn:
+                tab_btn.setChecked(n == name)
 
     def show_video(self):
         self.placeholderWidget.hide()

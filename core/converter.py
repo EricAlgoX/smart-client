@@ -1,4 +1,5 @@
 import cv2
+import time
 import queue
 import traceback
 from PySide6.QtGui import QImage
@@ -26,6 +27,9 @@ class ImageConverter(QThread):
         self.fps_limit = fps_limit
 
     def run(self):
+        min_interval = 1.0 / self.fps_limit if self.fps_limit > 0 else 0
+        last_emit = 0.0
+
         while self._running:
             try:
                 item = self.input_queue.get(timeout=0.05)
@@ -33,6 +37,12 @@ class ImageConverter(QThread):
                 continue
 
             try:
+                # 帧率限制：跳过过快的帧
+                now = time.monotonic()
+                if now - last_emit < min_interval:
+                    continue
+                last_emit = now
+
                 frame, details, path = item
                 if frame is None:
                     continue

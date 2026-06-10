@@ -4,3 +4,4 @@ numpy>=1.26.3
 Pillow>=10.0.0
 termcolor>=2.3.0
 onnxruntime>=1.17.0
+pyinstaller>=6.0.0

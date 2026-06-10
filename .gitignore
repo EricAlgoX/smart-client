@@ -3,27 +3,39 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.egg-info/
-dist/
-build/
 *.egg
 
-# Virtual environments
+# 打包产物
+dist/
+build/
+
+# 虚拟环境
 venv/
 .venv/
 env/
 
 # IDE
+.vscode/
 .idea/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
+# 日志
 *.log
 
-# Output
+# 模型文件（太大，不进 git）
+*.onnx
+*.pt
+*.trt
+*.engine
+
+# 测试输出
 images/
 annotations/
 
-skills/
+# 演示视频
+*.mp4
+*.MP4
+*.avi
