@@ -27,8 +27,11 @@ class ImageConverter(QThread):
         self.fps_limit = fps_limit
 
     def run(self):
+        import logging
+        logger = logging.getLogger("Smart-Client")
         min_interval = 1.0 / self.fps_limit if self.fps_limit > 0 else 0
         last_emit = 0.0
+        frame_count = 0
 
         while self._running:
             try:
@@ -46,6 +49,10 @@ class ImageConverter(QThread):
                 frame, details, path = item
                 if frame is None:
                     continue
+
+                frame_count += 1
+                if frame_count == 1:
+                    logger.info(f"[Converter] 首帧处理, shape={frame.shape}")
 
                 # 绘制检测框
                 for det in details:
@@ -74,4 +81,9 @@ class ImageConverter(QThread):
 
     def stop(self):
         self._running = False
-        self.wait(500)
+        # 断开信号，防止旧信号指向已删除的格子
+        try:
+            self.pixmap_ready.disconnect()
+        except RuntimeError:
+            pass
+        self.wait(2000)

@@ -11,12 +11,13 @@ from utils.profiler import profiler
 class InferenceWorker(QThread):
     """后台推理线程"""
 
-    def __init__(self, input_queue, output_queue, confidence=0.3, nms=0.5):
+    def __init__(self, input_queue, output_queue, confidence=0.3, nms=0.5, skip_frames=0):
         super().__init__()
         self.q = input_queue
         self.out_q = output_queue
         self.confidence = confidence
         self.nms = nms
+        self.skip_frames = skip_frames  # 每 N 帧跳过推理，直接透传
         self._running = True
 
     @profiler.measure("inference")
@@ -29,6 +30,9 @@ class InferenceWorker(QThread):
         return image, detections, path
 
     def run(self):
+        frame_idx = 0
+        last_details = []  # 缓存上一次检测结果，跳过帧时复用
+
         while self._running:
             try:
                 item = self.q.get(timeout=0.05)
@@ -42,12 +46,21 @@ class InferenceWorker(QThread):
                 self.q.task_done()
                 continue
 
+            frame_idx += 1
+
+            # skip_frames > 0 时，跳过部分帧的推理，但复用上一次检测结果（避免闪烁）
+            if self.skip_frames > 0 and (frame_idx % (self.skip_frames + 1)) != 0:
+                self.out_q.put((image, last_details, path))
+                self.q.task_done()
+                continue
+
             try:
                 image, details, path = self._do_inference(image, path)
+                last_details = details
                 self.out_q.put((image, details, path))
             except Exception as e:
                 logger.error(f"[InferenceWorker] 推理异常: {e}")
-                self.out_q.put((image, [], path))
+                self.out_q.put((image, last_details, path))
 
             self.q.task_done()
 

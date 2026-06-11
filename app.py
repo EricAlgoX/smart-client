@@ -21,6 +21,39 @@ from ui.main_controller import MainController
 from info import __appname__, __url__, __version__
 
 
+# ── 自动缩放的 QLabel（完全自绘，不触发布局）──
+class ScaledLabel(QLabel):
+    """等比缩放显示 pixmap，完全自绘避免布局反馈循环。"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._raw_pixmap = None
+
+    def setScaledPixmap(self, pixmap):
+        """外部调用此方法设置图片（不触发布局更新）"""
+        self._raw_pixmap = pixmap
+        self.update()  # 只触发 repaint，不触发 relayout
+
+    def paintEvent(self, event):
+        """完全自绘：先画背景，再居中等比缩放绘制 pixmap"""
+        painter = QPainter(self)
+        # 背景
+        painter.fillRect(self.rect(), QColor("#0a0a1a"))
+        # 画 pixmap
+        if self._raw_pixmap and not self._raw_pixmap.isNull():
+            sz = self.size()
+            scaled = self._raw_pixmap.scaled(
+                sz,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            # 居中绘制
+            x = (sz.width() - scaled.width()) // 2
+            y = (sz.height() - scaled.height()) // 2
+            painter.drawPixmap(x, y, scaled)
+        painter.end()
+
+
 # ── 漂浮粒子背景 ──
 class ParticleBackground(QWidget):
     def __init__(self, parent=None):
@@ -127,20 +160,24 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(main_splitter)
 
-    # ── 视频区域 ──
+    # ── 视频区域（支持 1×1 / 2×2 / 3×3 网格）──
     def _build_video_area(self):
         container = QWidget()
         container.setObjectName("videoContainer")
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # 视频画面
-        self.label = QLabel()
-        self.label.setObjectName("videoLabel")
-        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.label.setMinimumSize(640, 360)
-        self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(self.label)
+        # 网格容器（QGridLayout，动态填充格子）
+        self.gridContainer = QWidget()
+        self.gridContainer.setObjectName("gridContainer")
+        self.gridLayout = QGridLayout(self.gridContainer)
+        self.gridLayout.setContentsMargins(4, 4, 4, 4)
+        self.gridLayout.setSpacing(4)
+
+        # 格子列表：grid_cells[i] = QLabel
+        self.grid_cells = []
+        self.grid_size = 1  # 当前网格：1=1×1, 2=2×2, 3=3×3
 
         # 空状态占位
         self.placeholderWidget = QWidget()
@@ -160,7 +197,6 @@ class MainWindow(QMainWindow):
         ph_hint.setObjectName("placeholderHint")
         ph_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # 骨架条
         skeleton = QWidget()
         skeleton.setObjectName("skeletonBar")
         skeleton.setFixedSize(240, 6)
@@ -176,9 +212,56 @@ class MainWindow(QMainWindow):
         ph_layout.addStretch()
 
         layout.addWidget(self.placeholderWidget)
-        self.label.hide()
+        layout.addWidget(self.gridContainer)
+        self.gridContainer.hide()
+
+        # 一次性创建 9 个格子，后续只切换可见性
+        self.grid_cells = []
+        self.grid_size = 1
+        for i in range(9):
+            row, col = divmod(i, 3)
+            cell = ScaledLabel()
+            cell.setObjectName("gridCell")
+            cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cell.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            cell.setStyleSheet("background: #0a0a1a; border: none;")
+            self.gridLayout.addWidget(cell, row, col)
+            self.grid_cells.append(cell)
+
+        # 默认 1×1 模式
+        self.set_grid_mode(1)
 
         return container
+
+    def set_grid_mode(self, size: int):
+        """切换网格模式：1=1×1, 2=2×2, 3=3×3（只改可见性和位置，不重建格子）"""
+        self.grid_size = size
+        count = size * size
+
+        # 重新设置每个格子的行列位置和可见性
+        for i, cell in enumerate(self.grid_cells):
+            if i < count:
+                row, col = divmod(i, size)
+                self.gridLayout.addWidget(cell, row, col)
+                cell.show()
+                border = "border: none;" if size == 1 else "border: 1px solid #1e1e2e; border-radius: 6px;"
+                cell.setStyleSheet(f"background: #0a0a1a; {border}")
+            else:
+                # 从布局中移除多余格子
+                self.gridLayout.removeWidget(cell)
+                cell.hide()
+                cell.clear()
+
+        # 更新行列拉伸（3x3 全拉伸，其余只拉伸用到的行列）
+        for i in range(3):
+            self.gridLayout.setColumnStretch(i, 1 if i < size else 0)
+            self.gridLayout.setRowStretch(i, 1 if i < size else 0)
+
+    def get_grid_cell(self, index: int):
+        """获取指定索引的格子"""
+        if 0 <= index < len(self.grid_cells):
+            return self.grid_cells[index]
+        return None
 
     # ── 右侧面板：告警 + 统计 ──
     def _build_right_panel(self):
@@ -319,6 +402,19 @@ class MainWindow(QMainWindow):
 
         toolbar.addSeparator()
 
+        # 网格模式
+        self.tb_grid_1x1 = QAction("1×1", self)
+        self.tb_grid_2x2 = QAction("2×2", self)
+        self.tb_grid_3x3 = QAction("3×3", self)
+        for act in [self.tb_grid_1x1, self.tb_grid_2x2, self.tb_grid_3x3]:
+            act.setCheckable(True)
+        self.tb_grid_1x1.setChecked(True)
+        toolbar.addAction(self.tb_grid_1x1)
+        toolbar.addAction(self.tb_grid_2x2)
+        toolbar.addAction(self.tb_grid_3x3)
+
+        toolbar.addSeparator()
+
         # 流标签栏：[＋] [标签1] [标签2] ...
         self.btnAddStream = QPushButton("＋")
         self.btnAddStream.setObjectName("streamAddBtn")
@@ -447,11 +543,13 @@ class MainWindow(QMainWindow):
                 tab_btn.setChecked(n == name)
 
     def show_video(self):
+        """显示网格，隐藏占位"""
         self.placeholderWidget.hide()
-        self.label.show()
+        self.gridContainer.show()
 
     def show_placeholder(self):
-        self.label.hide()
+        """显示占位，隐藏网格"""
+        self.gridContainer.hide()
         self.placeholderWidget.show()
 
     def set_status_connected(self, source_name: str):

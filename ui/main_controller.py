@@ -87,6 +87,11 @@ class MainController:
         # 流标签栏
         ui.btnAddStream.clicked.connect(self._show_add_stream_menu)
 
+        # 网格模式（切换后刷新格子连接）
+        ui.tb_grid_1x1.triggered.connect(lambda: self._switch_grid(1))
+        ui.tb_grid_2x2.triggered.connect(lambda: self._switch_grid(2))
+        ui.tb_grid_3x3.triggered.connect(lambda: self._switch_grid(3))
+
         # 导出记录
         ui.btnExportRecords.clicked.connect(self._export_records)
 
@@ -134,6 +139,11 @@ class MainController:
     #  源选择 → 创建 StreamSession
     # ────────────────────────────────────────
     def select_source(self, source_type):
+        # 提前检查上限
+        if len(self.stream_manager.get_all_names()) >= 9:
+            QMessageBox.warning(self.window, "提示", "最多支持 9 路视频流")
+            return
+
         if source_type == "image":
             result = select_image(self)
         elif source_type == "video":
@@ -156,8 +166,11 @@ class MainController:
             self._connect_worker = worker
             source_name = result['stream_name']
             self.ui.log_edit.append(f"正在连接: {source_name} ...")
-            self.ui.label.setText("⏳ 正在连接...")
-            self.ui.label.setStyleSheet("color: #60a5fa; font-size: 16px; background: transparent;")
+            # 在第一个格子显示连接状态
+            cell = self.ui.get_grid_cell(0)
+            if cell:
+                cell.setText("⏳ 正在连接...")
+                cell.setStyleSheet("color: #60a5fa; font-size: 16px; background: #0a0a1a; border: 1px solid #1e1e2e; border-radius: 6px;")
             worker.finished.connect(
                 lambda stream, frame, fname: self._on_stream_connected(stream, frame, fname, source_name))
             worker.error.connect(self._on_stream_error)
@@ -184,14 +197,42 @@ class MainController:
         self._create_session(result, "camera")
 
     def _on_stream_error(self, error_msg):
-        self.ui.label.setText("连接失败，请重试")
-        self.ui.label.setStyleSheet("color: #ef4444; font-size: 14px; background: transparent;")
+        cell = self.ui.get_grid_cell(0)
+        if cell:
+            cell.setText("❌ 连接失败")
+            cell.setStyleSheet("color: #ef4444; font-size: 14px; background: #0a0a1a; border: 1px solid #1e1e2e; border-radius: 6px;")
         self.ui.log_edit.append(f"❌ 连接失败: {error_msg}")
         QMessageBox.critical(self.window, "连接失败", error_msg)
 
     def _create_session(self, source, source_type):
         """创建 StreamSession 并添加到管理器"""
         name = str(source['stream_name'])
+
+        # 检查是否已满（最多 9 路）
+        current_count = len(self.stream_manager.get_all_names())
+        if current_count >= 9:
+            QMessageBox.warning(self.window, "提示", "最多支持 9 路视频流")
+            # 恢复 UI 状态（清除"正在连接中"的提示）
+            self._refresh_grid()
+            self.ui.show_video()
+            return
+
+        # 先计算目标网格并更新 max_slots（必须在 add 之前！）
+        new_count = current_count + 1
+        if new_count == 1:
+            target_grid = 1
+        elif new_count <= 4:
+            target_grid = 2
+        else:
+            target_grid = 3
+
+        if target_grid != self.ui.grid_size:
+            self._set_grid_mode(target_grid)
+            from PySide6.QtWidgets import QApplication
+            QApplication.processEvents()
+        else:
+            # 即使不切网格，也要更新 max_slots
+            self.stream_manager.max_slots = target_grid * target_grid
 
         session = StreamSession(
             name=name,
@@ -201,8 +242,12 @@ class MainController:
             source_type=source_type,
         )
 
-        # 注册到管理器
+        # 注册到管理器（此时 max_slots 已正确）
         session_name = self.stream_manager.add(session)
+
+        # 连接所有 session 到格子
+        self._refresh_grid()
+        self.ui.show_video()
 
         # 添加 UI 标签
         self.ui.add_stream_tab(
@@ -211,23 +256,82 @@ class MainController:
             on_close=self._on_tab_close,
         )
 
-        # 切换到新 session
-        self._switch_to_session(session_name)
+        # 标记为当前标签
+        self.ui.switch_stream_tab(session_name)
+        self.ui.set_status_connected(session_name)
+        self.stream_manager._active_name = session_name
 
         # 启动推理
         if engine_manager.is_loaded:
-            session.start_inference(
-                confidence=self._confidence,
-                nms=self._nms,
-            )
+            session.start_inference(confidence=self._confidence, nms=self._nms)
             self.ui.log_edit.append(f"✅ {session_name} 已连接，推理已启动")
         else:
             self.ui.log_edit.append(f"✅ {session_name} 已连接，请选择场景后开始推理")
 
         # 视频/摄像头自动开始
         if source_type in ("video", "camera"):
-            session.running = True
-            session.timer.start(33)
+            session.start_streaming()
+
+    # ────────────────────────────────────────
+    #  网格模式
+    # ────────────────────────────────────────
+    def _switch_grid(self, size: int):
+        """用户手动切换网格模式"""
+        self._set_grid_mode(size)
+        self._refresh_grid()
+
+    def _set_grid_mode(self, size: int):
+        """切换网格模式 1×1 / 2×2 / 3×3（格子不再重建，只改可见性）"""
+        self.ui.tb_grid_1x1.setChecked(size == 1)
+        self.ui.tb_grid_2x2.setChecked(size == 2)
+        self.ui.tb_grid_3x3.setChecked(size == 3)
+        self.stream_manager.max_slots = size * size
+        self.ui.set_grid_mode(size)
+        self.ui.show_video()
+        # 注意：不在这里调 _refresh_grid，由调用方决定何时连接 session
+
+    def _refresh_grid(self):
+        """刷新所有格子的显示（按 slot 索引对齐）"""
+        cells = self.ui.grid_cells
+        visible_count = self.ui.grid_size * self.ui.grid_size
+        border = "border: none;" if self.ui.grid_size == 1 else "border: 1px solid #1e1e2e; border-radius: 6px;"
+
+        for i, cell in enumerate(cells):
+            if i >= visible_count:
+                break
+            session = self.stream_manager.get_slot_session(i)
+            if session:
+                if session.converter is None:
+                    self._connect_session_to_cell(session, cell)
+            else:
+                cell.clear()
+                cell.setText("")
+                cell.setStyleSheet(f"background: #0a0a1a; {border}")
+
+    def _connect_session_to_cell(self, session, cell_label):
+        """把 session 的 converter 输出连接到指定格子"""
+        if session.converter is not None:
+            session.converter.stop()
+
+        # 强制更新布局，确保格子有正确的尺寸
+        cell_label.show()
+        cell_label.updateGeometry()
+
+        def on_cell_frame(qimg, details, _path='', _original_rgb=None):
+            pixmap = QPixmap.fromImage(qimg)
+            cell_label.setScaledPixmap(pixmap)
+            if details:
+                self._process_alerts(details, session)
+                self._update_records(details, session)
+                self._update_stats(details, session)
+
+        session.activate_grid(on_cell_frame, lambda: cell_label.size())
+
+        # 视频/摄像头：启动 reader 线程
+        if session.source_type in ("video", "camera"):
+            session.start_streaming()
+        elif session.source_type == "image":
+            session.frame_queue.put((session.first_frame, session.frame_name))
 
     # ────────────────────────────────────────
     #  流标签操作
@@ -245,26 +349,26 @@ class MainController:
         self.ui.remove_stream_tab(name)
         self.ui.log_edit.append(f"已关闭: {name}")
 
-        # 切换到剩余的某个 session
-        active = self.stream_manager.get_active()
-        if active:
-            self._switch_to_session(active.name)
+        # 刷新网格
+        if self.stream_manager.get_all_names():
+            self._refresh_grid()
+            active = self.stream_manager.get_active()
+            if active:
+                self._switch_to_session(active.name)
         else:
             self.ui.show_placeholder()
             self.ui.set_status_disconnected()
 
     def _switch_to_session(self, name):
-        """切换到指定 session"""
+        """切换到指定 session（高亮标签 + 刷新告警记录）"""
         self.stream_manager.switch_to(
             name,
             display_callback=self.display,
             get_label_size=self._get_label_size,
         )
         self.ui.switch_stream_tab(name)
-        self.ui.show_video()
         self.ui.set_status_connected(name)
 
-        # 刷新告警和记录显示
         session = self.stream_manager.get_active()
         if session:
             self._refresh_alerts(session)
@@ -283,23 +387,20 @@ class MainController:
             return
 
         if session.source_type == "image":
-            session.image_queue.put((session.first_frame, session.frame_name))
+            session.frame_queue.put((session.first_frame, session.frame_name))
             return
 
         if not session.running:
-            session.running = True
-            session.timer.start(33)
+            session.start_streaming()
             if session.inference_worker is None:
                 session.start_inference(self._confidence, self._nms)
         else:
-            session.running = False
-            session.timer.stop()
+            session.stop_inference()
 
     def _stop_detection(self):
         session = self.stream_manager.get_active()
         if session:
-            session.running = False
-            session.timer.stop()
+            session.stop_inference()
             self.ui.log_edit.append(f"检测已停止: {session.name}")
 
     # ────────────────────────────────────────
@@ -311,10 +412,16 @@ class MainController:
             self.current_display_image = original_rgb
 
         qpix = QPixmap.fromImage(qimg)
-        self.ui.label.setPixmap(qpix)
+        # 显示到 active session 对应的格子
+        session = self.stream_manager.get_active()
+        if session:
+            slot_idx = self.stream_manager.slots.index(session.name) if session.name in self.stream_manager.slots else -1
+            if slot_idx >= 0:
+                cell = self.ui.get_grid_cell(slot_idx)
+                if cell:
+                    cell.setScaledPixmap(qpix)
 
-        if details:
-            session = self.stream_manager.get_active()
+        if details and session:
             if session:
                 self._process_alerts(details, session)
                 self._update_records(details, session)
@@ -402,7 +509,8 @@ class MainController:
 
     def _get_label_size(self):
         try:
-            return self.ui.label.size()
+            cell = self.ui.get_grid_cell(0)
+            return cell.size() if cell else None
         except Exception:
             return None
 
