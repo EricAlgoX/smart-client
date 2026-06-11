@@ -87,11 +87,6 @@ class MainController:
         # 流标签栏
         ui.btnAddStream.clicked.connect(self._show_add_stream_menu)
 
-        # 网格模式（切换后刷新格子连接）
-        ui.tb_grid_1x1.triggered.connect(lambda: self._switch_grid(1))
-        ui.tb_grid_2x2.triggered.connect(lambda: self._switch_grid(2))
-        ui.tb_grid_3x3.triggered.connect(lambda: self._switch_grid(3))
-
         # 导出记录
         ui.btnExportRecords.clicked.connect(self._export_records)
 
@@ -275,16 +270,8 @@ class MainController:
     # ────────────────────────────────────────
     #  网格模式
     # ────────────────────────────────────────
-    def _switch_grid(self, size: int):
-        """用户手动切换网格模式"""
-        self._set_grid_mode(size)
-        self._refresh_grid()
-
     def _set_grid_mode(self, size: int):
         """切换网格模式 1×1 / 2×2 / 3×3（格子不再重建，只改可见性）"""
-        self.ui.tb_grid_1x1.setChecked(size == 1)
-        self.ui.tb_grid_2x2.setChecked(size == 2)
-        self.ui.tb_grid_3x3.setChecked(size == 3)
         self.stream_manager.max_slots = size * size
         self.ui.set_grid_mode(size)
         self.ui.show_video()
@@ -327,8 +314,8 @@ class MainController:
 
         session.activate_grid(on_cell_frame, lambda: cell_label.size())
 
-        # 视频/摄像头：启动 reader 线程
-        if session.source_type in ("video", "camera"):
+        # 只在还没运行时才启动 reader（避免重复创建线程导致同源流冲突）
+        if not session.running and session.source_type in ("video", "camera"):
             session.start_streaming()
         elif session.source_type == "image":
             session.frame_queue.put((session.first_frame, session.frame_name))
@@ -340,36 +327,110 @@ class MainController:
         """点击标签切换"""
         self._switch_to_session(name)
 
-    def _on_tab_close(self, name):
-        """关闭标签"""
+    def _on_tab_close(self, name: str):
+        """关闭标签（只清理被删的流，不动其他流）"""
+        if not name:
+            return
+
+        # 先停 converter（避免信号指向即将删除的格子）
         session = self.stream_manager.get(name)
-        if session:
-            session.cleanup()
+        if session and session.converter is not None:
+            session.converter.stop()
+            session.converter = None
+
+        # 清除对应格子内容
+        slot_idx = self.stream_manager.slots.index(name) if name in self.stream_manager.slots else -1
+        if slot_idx >= 0:
+            cell = self.ui.get_grid_cell(slot_idx)
+            if cell:
+                cell.setScaledPixmap(None)
+                cell.setText("")
+                border = "border: none;" if self.ui.grid_size == 1 else "border: 1px solid #1e1e2e; border-radius: 6px;"
+                cell.setStyleSheet(f"background: #0a0a1a; {border}")
+
+        # 从管理器移除（内部会调 cleanup 停 reader 和 inference）
         self.stream_manager.remove(name)
         self.ui.remove_stream_tab(name)
         self.ui.log_edit.append(f"已关闭: {name}")
 
-        # 刷新网格
-        if self.stream_manager.get_all_names():
-            self._refresh_grid()
-            active = self.stream_manager.get_active()
-            if active:
-                self._switch_to_session(active.name)
-        else:
+        # 剩余流前移填充空位（只重连位置变了的流）
+        self._compact_grid()
+
+    def _compact_grid(self):
+        """把剩余流紧凑排列到格子中（只重连位置变了的流）"""
+        cells = self.ui.grid_cells
+        border = "border: none;" if self.ui.grid_size == 1 else "border: 1px solid #1e1e2e; border-radius: 6px;"
+
+        # 记录每个 session 当前所在的 slot
+        old_slot_map = {}
+        for i in range(self.stream_manager.max_slots):
+            name = self.stream_manager.slots[i]
+            if name:
+                old_slot_map[name] = i
+
+        # 按 slot 顺序收集剩余 session
+        active_sessions = []
+        for i in range(self.stream_manager.max_slots):
+            session = self.stream_manager.get_slot_session(i)
+            if session:
+                active_sessions.append(session)
+
+        # 确定合适的网格大小
+        count = len(active_sessions)
+        if count == 0:
             self.ui.show_placeholder()
             self.ui.set_status_disconnected()
+            return
+        elif count <= 4:
+            target_grid = 2
+        else:
+            target_grid = 3
+
+        # 如果需要降级网格
+        if target_grid != self.ui.grid_size:
+            self._set_grid_mode(target_grid)
+            cells = self.ui.grid_cells
+            border = "border: none;" if target_grid == 1 else "border: 1px solid #1e1e2e; border-radius: 6px;"
+
+        visible_count = self.ui.grid_size * self.ui.grid_size
+
+        # 重新分配到连续格子
+        for i in range(visible_count):
+            cell = cells[i]
+            if i < count:
+                session = active_sessions[i]
+                old_idx = old_slot_map.get(session.name, -1)
+                self.stream_manager.slots[i] = session.name
+
+                if old_idx == i:
+                    # 位置没变，不动
+                    pass
+                else:
+                    # 位置变了，重连到新格子
+                    if session.converter is not None:
+                        session.converter.stop()
+                        session.converter = None
+                    self._connect_session_to_cell(session, cell)
+            else:
+                self.stream_manager.slots[i] = None
+                cell.setScaledPixmap(None)
+                cell.setText("")
+                cell.setStyleSheet(f"background: #0a0a1a; {border}")
 
     def _switch_to_session(self, name):
-        """切换到指定 session（高亮标签 + 刷新告警记录）"""
-        self.stream_manager.switch_to(
-            name,
-            display_callback=self.display,
-            get_label_size=self._get_label_size,
-        )
+        """切换 active session（宫格模式下只切引用，不动 converter）"""
+        # 宫格模式：只更新 active 引用，不动 converter
+        old_active = self.stream_manager.get_active()
+        if old_active:
+            old_active.set_active(False)
+
+        self.stream_manager._active_name = name
+        session = self.stream_manager.get_active()
+        if session:
+            session.set_active(True)
+
         self.ui.switch_stream_tab(name)
         self.ui.set_status_connected(name)
-
-        session = self.stream_manager.get_active()
         if session:
             self._refresh_alerts(session)
             self._refresh_records(session)

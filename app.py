@@ -5,7 +5,7 @@ import random
 import logging
 from datetime import datetime
 from PySide6 import QtCore
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QIcon, QPainter, QColor, QBrush, QFont
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -24,10 +24,19 @@ from info import __appname__, __url__, __version__
 # ── 自动缩放的 QLabel（完全自绘，不触发布局）──
 class ScaledLabel(QLabel):
     """等比缩放显示 pixmap，完全自绘避免布局反馈循环。"""
+    doubleClicked = Signal(int)  # 发射格子索引
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._raw_pixmap = None
+        self._cell_index = -1
+
+    def setCellIndex(self, index: int):
+        self._cell_index = index
+
+    def mouseDoubleClickEvent(self, event):
+        self.doubleClicked.emit(self._cell_index)
+        super().mouseDoubleClickEvent(event)
 
     def setScaledPixmap(self, pixmap):
         """外部调用此方法设置图片（不触发布局更新）"""
@@ -123,6 +132,10 @@ class MainWindow(QMainWindow):
         self.log_edit = self._LogBridge(self)
 
         self.controller = MainController(self)
+
+        # 全屏状态
+        self._fullscreen_cell = -1
+        self._prev_grid_size = 1
 
         # 粒子背景
         self.particle_bg = ParticleBackground(self.centralWidget())
@@ -225,6 +238,8 @@ class MainWindow(QMainWindow):
             cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
             cell.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             cell.setStyleSheet("background: #0a0a1a; border: none;")
+            cell.setCellIndex(i)
+            cell.doubleClicked.connect(self._on_cell_double_click)
             self.gridLayout.addWidget(cell, row, col)
             self.grid_cells.append(cell)
 
@@ -379,9 +394,9 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
 
         # 源操作
-        self.tb_act_image = QAction("打开图片", self)
-        self.tb_act_video = QAction("打开视频", self)
-        self.tb_act_camera = QAction("接入摄像头", self)
+        self.tb_act_image = QAction("📷 打开图片", self)
+        self.tb_act_video = QAction("🎬 打开视频", self)
+        self.tb_act_camera = QAction("📡 接入摄像头", self)
         toolbar.addAction(self.tb_act_image)
         toolbar.addAction(self.tb_act_video)
         toolbar.addAction(self.tb_act_camera)
@@ -399,19 +414,6 @@ class MainWindow(QMainWindow):
         # 设置
         self.tb_act_settings = QAction("⚙  设置", self)
         toolbar.addAction(self.tb_act_settings)
-
-        toolbar.addSeparator()
-
-        # 网格模式
-        self.tb_grid_1x1 = QAction("1×1", self)
-        self.tb_grid_2x2 = QAction("2×2", self)
-        self.tb_grid_3x3 = QAction("3×3", self)
-        for act in [self.tb_grid_1x1, self.tb_grid_2x2, self.tb_grid_3x3]:
-            act.setCheckable(True)
-        self.tb_grid_1x1.setChecked(True)
-        toolbar.addAction(self.tb_grid_1x1)
-        toolbar.addAction(self.tb_grid_2x2)
-        toolbar.addAction(self.tb_grid_3x3)
 
         toolbar.addSeparator()
 
@@ -542,6 +544,37 @@ class MainWindow(QMainWindow):
             if tab_btn:
                 tab_btn.setChecked(n == name)
 
+    def _on_cell_double_click(self, cell_index: int):
+        """双击格子：全屏看该路 / 再双击回到宫格"""
+        if self._fullscreen_cell == cell_index:
+            # 已经全屏 → 回到之前的宫格
+            self._exit_fullscreen()
+        else:
+            # 进入全屏
+            self._enter_fullscreen(cell_index)
+
+    def _enter_fullscreen(self, cell_index: int):
+        """全屏显示指定格子"""
+        self._fullscreen_cell = cell_index
+        self._prev_grid_size = self.grid_size
+        # 隐藏其他格子，只显示选中的
+        for i, cell in enumerate(self.grid_cells):
+            if i == cell_index:
+                cell.show()
+                cell.setStyleSheet("background: #0a0a1a; border: none;")
+                self.gridLayout.addWidget(cell, 0, 0)
+            else:
+                cell.hide()
+        # 更新拉伸
+        for i in range(3):
+            self.gridLayout.setColumnStretch(i, 1 if i == 0 else 0)
+            self.gridLayout.setRowStretch(i, 1 if i == 0 else 0)
+
+    def _exit_fullscreen(self):
+        """退出全屏，回到之前的宫格"""
+        self._fullscreen_cell = -1
+        self.set_grid_mode(self._prev_grid_size)
+
     def show_video(self):
         """显示网格，隐藏占位"""
         self.placeholderWidget.hide()
@@ -569,6 +602,12 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'particle_bg'):
                 self.particle_bg.resize(obj.size())
         return super().eventFilter(obj, event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape and self._fullscreen_cell >= 0:
+            self._exit_fullscreen()
+        else:
+            super().keyPressEvent(event)
 
     def closeEvent(self, event):
         if hasattr(self, 'controller'):

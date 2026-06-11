@@ -31,10 +31,11 @@ QToolBar QToolButton {
     padding: 6px 14px;
     color: #94a3b8;
     font-size: 12px;
+    letter-spacing: 0.5px;
 }
 QToolBar QToolButton:hover {
-    background: rgba(59, 130, 246, 0.15);
-    border: 1px solid rgba(59, 130, 246, 0.4);
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.35);
     color: #e2e8f0;
 }
 QToolBar QToolButton:pressed {
@@ -75,14 +76,15 @@ QToolBar::separator { width: 1px; background: rgba(255, 255, 255, 0.06); margin:
 /* ── 状态栏 ── */
 QStatusBar {
     background: rgba(10, 10, 26, 0.95);
-    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    border-top: 1px solid rgba(59, 130, 246, 0.15);
     color: #94a3b8;
     font-size: 11px;
     padding: 2px 0;
 }
 #statusItem {
     color: #64748b; background: transparent;
-    padding: 2px 12px; border-right: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 2px 14px;
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
     font-size: 11px;
 }
 #statusDotGreen {
@@ -105,6 +107,17 @@ QStatusBar {
 #videoLabel {
     background: transparent; border: none; color: #334155;
     font-size: 14px;
+}
+
+/* 格子样式 + hover 高亮 */
+#gridCell {
+    background: #0a0a1a;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+}
+#gridCell:hover {
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    background: rgba(10, 10, 26, 0.8);
 }
 
 /* 空状态占位 */
@@ -169,16 +182,18 @@ QGroupBox::title {
     outline: none;
 }
 #alertList::item {
-    padding: 5px 8px;
+    padding: 6px 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.02);
     color: #94a3b8;
+    min-height: 20px;
 }
 #alertList::item:hover { background: rgba(59, 130, 246, 0.08); }
 #alertList::item:selected { background: rgba(59, 130, 246, 0.2); color: #e2e8f0; }
 #alertList QHeaderView::section {
     background: rgba(15, 15, 30, 0.8); color: #475569;
-    border: none; border-bottom: 1px solid rgba(59, 130, 246, 0.2);
-    padding: 5px 8px; font-size: 11px; font-weight: bold;
+    border: none; border-bottom: 2px solid rgba(59, 130, 246, 0.3);
+    padding: 6px 8px; font-size: 11px; font-weight: bold;
+    letter-spacing: 1px;
 }
 
 
@@ -186,10 +201,15 @@ QGroupBox::title {
 #statsKey {
     color: #475569; font-size: 11px;
     background: transparent; border: none; padding: 8px 0;
+    letter-spacing: 1px;
 }
 #statsValue {
-    color: #60a5fa; font-size: 20px; font-weight: bold;
-    background: transparent; border: none; padding: 8px 0;
+    color: #60a5fa; font-size: 22px; font-weight: bold;
+    background: transparent; border: none; padding: 4px 0;
+}
+#statsValueAlert {
+    color: #ef4444; font-size: 22px; font-weight: bold;
+    background: transparent; border: none; padding: 4px 0;
 }
 
 
@@ -212,6 +232,10 @@ QGroupBox::title {
 }
 #recordTable QHeaderView::section {
     background: rgba(15, 15, 30, 0.8); color: #475569;
+    border: none; border-bottom: 2px solid rgba(59, 130, 246, 0.3);
+    padding: 6px 8px; font-size: 11px; font-weight: bold;
+    letter-spacing: 1px;
+}
     border: none; border-bottom: 1px solid rgba(59, 130, 246, 0.2);
     padding: 5px 8px; font-size: 11px; font-weight: bold;
 }

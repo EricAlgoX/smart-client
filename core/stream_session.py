@@ -178,8 +178,7 @@ class StreamSession:
         self.converter = None  # 必须清空，否则 _refresh_grid 跳过重建
 
     def cleanup(self):
-        """清理所有资源"""
+        """清理资源（不停 reader，避免同源流的 cv2.VideoCapture 被释放）"""
         self.stop_inference()
-        self._stop_reader()
         self.deactivate()
         logger.info(f"[Session:{self.name}] 已清理")

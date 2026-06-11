@@ -3,6 +3,7 @@
 import os
 import numpy as np
 from typing import List, Dict
+from engine.base import BaseEngine
 from engine.onnx_engine import OnnxEngine
 from utils.logger import logger
 
@@ -13,7 +14,7 @@ class Pipeline:
     def __init__(self, scene_dir: str, config: dict):
         self.scene_dir = scene_dir
         self.config = config
-        self.engines: Dict[int, OnnxEngine] = {}
+        self.engines: Dict[int, BaseEngine] = {}
         self.steps: List[dict] = config.get("pipeline", [])
         self._loaded = False
 
@@ -31,6 +32,9 @@ class Pipeline:
             if role == "plate_ocr":
                 from engine.plate_ocr_engine import PlateOcrEngine
                 engine = PlateOcrEngine()
+            elif role == "segmentation":
+                from engine.segment_engine import SegmentEngine
+                engine = SegmentEngine()
             else:
                 engine = OnnxEngine()
 
