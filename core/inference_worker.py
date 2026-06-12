@@ -56,8 +56,10 @@ class InferenceWorker(QThread):
 
             try:
                 image, details, path = self._do_inference(image, path)
-                last_details = details
-                self.out_q.put((image, details, path))
+                # 只在检测到目标时更新缓存（空结果不覆盖，避免检测框闪烁）
+                if details:
+                    last_details = details
+                self.out_q.put((image, last_details, path))
             except Exception as e:
                 logger.error(f"[InferenceWorker] 推理异常: {e}")
                 self.out_q.put((image, last_details, path))

@@ -1,7 +1,7 @@
 import cv2
 import time
 import queue
-import traceback
+from collections import deque
 from PySide6.QtGui import QImage
 from PySide6.QtCore import Signal, QThread
 
@@ -24,7 +24,7 @@ def _get_class_color(class_name: str) -> tuple:
 
 
 def draw_box(image, xmin, ymin, xmax, ymax, class_name, score, text=""):
-    """工业风格检测框：角标 + 半透明填充 + 圆角药丸标签"""
+    """工业风格检测框：角标 + 圆角药丸标签（半透明填充由调用方统一处理）"""
     color = _get_class_color(class_name)
     h, w = image.shape[:2]
     xmin, ymin = max(0, xmin), max(0, ymin)
@@ -33,12 +33,7 @@ def draw_box(image, xmin, ymin, xmax, ymax, class_name, score, text=""):
     if bw <= 0 or bh <= 0:
         return image
 
-    # 1. 半透明填充（10% 不透明度）
-    overlay = image.copy()
-    cv2.rectangle(overlay, (xmin, ymin), (xmax, ymax), color, -1)
-    cv2.addWeighted(overlay, 0.1, image, 0.9, 0, image)
-
-    # 2. 角标框（四角 L 形标记，不画完整矩形）
+    # 1. 角标框（四角 L 形标记，不画完整矩形）
     corner_len = min(20, bw // 4, bh // 4)
     thickness = 2
     # 左上
@@ -81,15 +76,25 @@ def draw_box(image, xmin, ymin, xmax, ymax, class_name, score, text=""):
 
 
 class ImageConverter(QThread):
-    """后台线程：BGR frame → QImage，叠加检测框"""
+    """后台线程：实时显示视频帧 + 异步叠加检测结果
+
+    数据流：
+      frame_queue → 显示帧（实时，不阻塞）
+      result_queue → 更新检测结果（异步，叠加到下一帧）
+    """
     pixmap_ready = Signal(QImage, object, str, object)
 
-    def __init__(self, input_queue: queue.Queue, target_size_getter, fps_limit=30):
+    def __init__(self, frame_queue: queue.Queue, result_queue: queue.Queue,
+                 target_size_getter, fps_limit=30, buffer_size=3):
         super().__init__()
-        self.input_queue = input_queue
+        self.frame_queue = frame_queue
+        self.result_queue = result_queue
         self._running = True
         self.target_size_getter = target_size_getter
         self.fps_limit = fps_limit
+        self._cached_details = []
+        # 帧缓冲：延迟 buffer_size 帧显示，等待推理结果同步
+        self._frame_buffer = deque(maxlen=buffer_size)
 
     def run(self):
         import logging
@@ -99,37 +104,68 @@ class ImageConverter(QThread):
         frame_count = 0
 
         while self._running:
+            # 1. 非阻塞读取推理结果，更新缓存
             try:
-                item = self.input_queue.get(timeout=0.05)
+                while True:
+                    _, details, _ = self.result_queue.get_nowait()
+                    if details is not None:
+                        self._cached_details = details
             except queue.Empty:
+                pass
+
+            # 2. 读取原始帧到缓冲区
+            try:
+                frame, path = self.frame_queue.get(timeout=0.05)
+                if frame is not None:
+                    self._frame_buffer.append((frame, path))
+            except queue.Empty:
+                pass
+
+            # 3. 从缓冲区取出最早的一帧显示（延迟 = buffer_size × 帧间隔）
+            if not self._frame_buffer:
                 continue
 
-            try:
-                # 帧率限制：跳过过快的帧
-                now = time.monotonic()
-                if now - last_emit < min_interval:
-                    continue
-                last_emit = now
+            frame, path = self._frame_buffer[0]
 
-                frame, details, path = item
-                if frame is None:
-                    continue
+            # 帧率限制
+            now = time.monotonic()
+            if now - last_emit < min_interval:
+                continue
+            last_emit = now
 
-                frame_count += 1
-                if frame_count == 1:
-                    logger.info(f"[Converter] 首帧处理, shape={frame.shape}")
+            frame_count += 1
+            if frame_count == 1:
+                logger.info(f"[Converter] 首帧处理, shape={frame.shape}, 缓冲={self._frame_buffer.maxlen}帧")
 
-                # 绘制分割 mask（半透明叠加）
+            details = self._cached_details
+
+            # 一次性绘制所有半透明叠加（避免重叠区域颜色加深）
+            if details:
+                overlay = frame.copy()
+                has_overlay = False
+
+                # 分割 mask
                 for det in details:
                     if 'mask' in det and det['mask'] is not None:
                         mask = det['mask']
                         if mask.shape[:2] == frame.shape[:2]:
                             color = _get_class_color(det.get('class', ''))
-                            overlay = frame.copy()
                             overlay[mask > 0] = color
-                            frame = cv2.addWeighted(overlay, 0.35, frame, 0.65, 0)
+                            has_overlay = True
 
-                # 绘制检测框
+                # 半透明填充
+                for det in details:
+                    if 'bbox' in det:
+                        xmin, ymin, xmax, ymax = det['bbox']
+                        color = _get_class_color(det.get('class', ''))
+                        cv2.rectangle(overlay, (xmin, ymin), (xmax, ymax), color, -1)
+                        has_overlay = True
+
+                # 一次性叠加
+                if has_overlay:
+                    frame = cv2.addWeighted(overlay, 0.1, frame, 0.9, 0)
+
+                # 绘制检测框边框和标签（不透明，在叠加层之上）
                 for det in details:
                     if 'bbox' in det:
                         xmin, ymin, xmax, ymax = det['bbox']
@@ -137,26 +173,22 @@ class ImageConverter(QThread):
                                         det.get('class', ''), det.get('score', ''),
                                         text=det.get('text', ''))
 
-                # BGR → RGB
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # BGR → RGB
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-                target_size = self.target_size_getter()
-                if target_size is not None and not target_size.isEmpty():
-                    display_rgb = cv2.resize(rgb, (target_size.width(), target_size.height()),
-                                            interpolation=cv2.INTER_LINEAR)
-                else:
-                    display_rgb = rgb
+            target_size = self.target_size_getter()
+            if target_size is not None and not target_size.isEmpty():
+                display_rgb = cv2.resize(rgb, (target_size.width(), target_size.height()),
+                                        interpolation=cv2.INTER_LINEAR)
+            else:
+                display_rgb = rgb
 
-                h, w, ch = display_rgb.shape
-                qimg = QImage(display_rgb.copy().data, w, h, ch * w, QImage.Format.Format_RGB888)
-                self.pixmap_ready.emit(qimg, details, path, rgb)
-
-            except Exception:
-                traceback.print_exc()
+            h, w, ch = display_rgb.shape
+            qimg = QImage(display_rgb.copy().data, w, h, ch * w, QImage.Format.Format_RGB888)
+            self.pixmap_ready.emit(qimg, details, path, rgb)
 
     def stop(self):
         self._running = False
-        # 断开信号，防止旧信号指向已删除的格子
         try:
             self.pixmap_ready.disconnect()
         except RuntimeError:
