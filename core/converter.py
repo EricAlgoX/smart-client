@@ -93,6 +93,8 @@ class ImageConverter(QThread):
         self.target_size_getter = target_size_getter
         self.fps_limit = fps_limit
         self._cached_details = []
+        self._last_frame = None  # 缓存最后一帧，推理结果到达时重新显示
+        self._last_path = ""
         # 帧缓冲：延迟 buffer_size 帧显示，等待推理结果同步
         self._frame_buffer = deque(maxlen=buffer_size)
 
@@ -102,14 +104,15 @@ class ImageConverter(QThread):
         min_interval = 1.0 / self.fps_limit if self.fps_limit > 0 else 0
         last_emit = 0.0
         frame_count = 0
-
         while self._running:
-            # 1. 非阻塞读取推理结果，更新缓存
+            # 1. 非阻塞读取推理结果，检测是否更新
+            details_updated = False
             try:
                 while True:
                     _, details, _ = self.result_queue.get_nowait()
                     if details is not None:
                         self._cached_details = details
+                        details_updated = True
             except queue.Empty:
                 pass
 
@@ -118,10 +121,17 @@ class ImageConverter(QThread):
                 frame, path = self.frame_queue.get(timeout=0.05)
                 if frame is not None:
                     self._frame_buffer.append((frame, path))
+                    self._last_frame = frame
+                    self._last_path = path
             except queue.Empty:
                 pass
 
-            # 3. 从缓冲区取出最早的一帧显示（延迟 = buffer_size × 帧间隔）
+            # 3. 推理结果更新 + 有缓存帧 → 重新显示（图片模式的关键）
+            if details_updated and self._last_frame is not None:
+                self._emit_frame(self._last_frame.copy(), self._cached_details, self._last_path)
+                continue
+
+            # 4. 从缓冲区取出最早的一帧显示
             if not self._frame_buffer:
                 continue
 
@@ -137,55 +147,53 @@ class ImageConverter(QThread):
             if frame_count == 1:
                 logger.info(f"[Converter] 首帧处理, shape={frame.shape}, 缓冲={self._frame_buffer.maxlen}帧")
 
-            details = self._cached_details
+            self._emit_frame(frame, self._cached_details, path)
 
-            # 一次性绘制所有半透明叠加（避免重叠区域颜色加深）
-            if details:
-                overlay = frame.copy()
-                has_overlay = False
+    def _emit_frame(self, frame, details, path):
+        """绘制检测框并发射信号"""
+        # 绘制分割 mask
+        for det in details:
+            if 'mask' in det and det['mask'] is not None:
+                mask = det['mask']
+                if mask.shape[:2] == frame.shape[:2]:
+                    color = _get_class_color(det.get('class', ''))
+                    overlay = frame.copy()
+                    overlay[mask > 0] = color
+                    frame = cv2.addWeighted(overlay, 0.35, frame, 0.65, 0)
 
-                # 分割 mask
-                for det in details:
-                    if 'mask' in det and det['mask'] is not None:
-                        mask = det['mask']
-                        if mask.shape[:2] == frame.shape[:2]:
-                            color = _get_class_color(det.get('class', ''))
-                            overlay[mask > 0] = color
-                            has_overlay = True
+        # 半透明填充
+        if details:
+            overlay = frame.copy()
+            has_overlay = False
+            for det in details:
+                if 'bbox' in det:
+                    xmin, ymin, xmax, ymax = det['bbox']
+                    color = _get_class_color(det.get('class', ''))
+                    cv2.rectangle(overlay, (xmin, ymin), (xmax, ymax), color, -1)
+                    has_overlay = True
+            if has_overlay:
+                frame = cv2.addWeighted(overlay, 0.1, frame, 0.9, 0)
 
-                # 半透明填充
-                for det in details:
-                    if 'bbox' in det:
-                        xmin, ymin, xmax, ymax = det['bbox']
-                        color = _get_class_color(det.get('class', ''))
-                        cv2.rectangle(overlay, (xmin, ymin), (xmax, ymax), color, -1)
-                        has_overlay = True
+        # 检测框和标签
+        for det in details:
+            if 'bbox' in det:
+                xmin, ymin, xmax, ymax = det['bbox']
+                frame = draw_box(frame, xmin, ymin, xmax, ymax,
+                                det.get('class', ''), det.get('score', ''),
+                                text=det.get('text', ''))
 
-                # 一次性叠加
-                if has_overlay:
-                    frame = cv2.addWeighted(overlay, 0.1, frame, 0.9, 0)
+        # BGR → RGB → QImage
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        target_size = self.target_size_getter()
+        if target_size is not None and not target_size.isEmpty():
+            display_rgb = cv2.resize(rgb, (target_size.width(), target_size.height()),
+                                    interpolation=cv2.INTER_LINEAR)
+        else:
+            display_rgb = rgb
 
-                # 绘制检测框边框和标签（不透明，在叠加层之上）
-                for det in details:
-                    if 'bbox' in det:
-                        xmin, ymin, xmax, ymax = det['bbox']
-                        frame = draw_box(frame, xmin, ymin, xmax, ymax,
-                                        det.get('class', ''), det.get('score', ''),
-                                        text=det.get('text', ''))
-
-            # BGR → RGB
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            target_size = self.target_size_getter()
-            if target_size is not None and not target_size.isEmpty():
-                display_rgb = cv2.resize(rgb, (target_size.width(), target_size.height()),
-                                        interpolation=cv2.INTER_LINEAR)
-            else:
-                display_rgb = rgb
-
-            h, w, ch = display_rgb.shape
-            qimg = QImage(display_rgb.copy().data, w, h, ch * w, QImage.Format.Format_RGB888)
-            self.pixmap_ready.emit(qimg, details, path, rgb)
+        h, w, ch = display_rgb.shape
+        qimg = QImage(display_rgb.copy().data, w, h, ch * w, QImage.Format.Format_RGB888)
+        self.pixmap_ready.emit(qimg, details, path, rgb)
 
     def stop(self):
         self._running = False

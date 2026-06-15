@@ -100,12 +100,13 @@ class StreamSession:
         self.running = False
         self.is_active = False
 
-    def start_inference(self, confidence=0.3, nms=0.5):
+    def start_inference(self, confidence=0.3, nms=0.5, skip_frames=None):
         """启动推理"""
         if self.inference_worker is not None:
             self.inference_worker.stop()
 
-        skip_frames = 0 if self.is_active else 4
+        if skip_frames is None:
+            skip_frames = 0 if self.is_active else 4
 
         self.inference_worker = InferenceWorker(
             input_queue=self.inference_queue,

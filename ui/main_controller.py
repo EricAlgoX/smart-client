@@ -256,16 +256,14 @@ class MainController:
         self.ui.set_status_connected(session_name)
         self.stream_manager._active_name = session_name
 
-        # 启动推理
-        if engine_manager.is_loaded:
-            session.start_inference(confidence=self._confidence, nms=self._nms)
-            self.ui.log_edit.append(f"✅ {session_name} 已连接，推理已启动")
-        else:
-            self.ui.log_edit.append(f"✅ {session_name} 已连接，请选择场景后开始推理")
-
-        # 视频/摄像头自动开始
-        if source_type in ("video", "camera"):
+        # 摄像头/视频流：自动开始播放（实时画面），但不推理
+        if source_type == "camera":
             session.start_streaming()
+            self.ui.log_edit.append(f"✅ {session_name} 已连接，实时画面已启动，点击「开始检测」启动推理")
+        elif source_type == "video":
+            self.ui.log_edit.append(f"✅ {session_name} 已加载，点击「开始检测」播放并推理")
+        else:
+            self.ui.log_edit.append(f"✅ {session_name} 已加载，点击「开始检测」启动推理")
 
     # ────────────────────────────────────────
     #  网格模式
@@ -314,11 +312,11 @@ class MainController:
 
         session.activate_grid(on_cell_frame, lambda: cell_label.size())
 
-        # 只在还没运行时才启动 reader（避免重复创建线程导致同源流冲突）
-        if not session.running and session.source_type in ("video", "camera"):
+        # 摄像头自动播放实时画面，视频/图片显示首帧预览
+        if not session.running and session.source_type == "camera":
             session.start_streaming()
         elif session.source_type == "image":
-            session.frame_queue.put((session.first_frame, session.frame_name))
+            session.display_queue.put((session.first_frame, session.frame_name))
 
     # ────────────────────────────────────────
     #  流标签操作
@@ -448,21 +446,31 @@ class MainController:
             return
 
         if session.source_type == "image":
-            session.frame_queue.put((session.first_frame, session.frame_name))
+            # 图片：启动推理线程（不跳帧）+ 送帧
+            if session.inference_worker is None:
+                session.start_inference(self._confidence, self._nms, skip_frames=0)
+            session.inference_queue.put((session.first_frame, session.frame_name))
             return
 
+        # 视频/摄像头：启动推理 + 播放
+        if session.inference_worker is None:
+            session.start_inference(self._confidence, self._nms)
         if not session.running:
             session.start_streaming()
-            if session.inference_worker is None:
-                session.start_inference(self._confidence, self._nms)
-        else:
-            session.stop_inference()
 
     def _stop_detection(self):
+        """停止检测：摄像头只停推理，视频停推理+播放"""
         session = self.stream_manager.get_active()
-        if session:
-            session.stop_inference()
-            self.ui.log_edit.append(f"检测已停止: {session.name}")
+        if session is None:
+            return
+
+        session.stop_inference()
+
+        # 视频文件：同时停止播放
+        if session.source_type == "video":
+            session.running = False
+
+        self.ui.log_edit.append(f"检测已停止: {session.name}")
 
     # ────────────────────────────────────────
     #  显示回调（active session 的 converter 触发）

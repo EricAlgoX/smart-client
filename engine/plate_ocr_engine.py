@@ -80,7 +80,6 @@ class PlateOcrEngine(BaseEngine):
         """车牌图像 → 文字"""
         if plate_img is None or plate_img.size == 0:
             return ""
-
         # 确保 3 通道（去掉 alpha 通道）
         if len(plate_img.shape) == 2:
             plate_img = cv2.cvtColor(plate_img, cv2.COLOR_GRAY2BGR)
@@ -93,7 +92,6 @@ class PlateOcrEngine(BaseEngine):
         logger.info(f"[PlateOcrEngine] 输入形状: {plate_img.shape}, 上游类别: {parent_class}")
 
         h, w = plate_img.shape[:2]
-
         # 双行牌处理：用上游检测模型的 class 判断（跟参考代码一致）
         # class=double_plate → 双行牌；class=plate → 单行牌
         is_double = "double" in parent_class
@@ -113,15 +111,14 @@ class PlateOcrEngine(BaseEngine):
         plate_img = plate_img.transpose([2, 0, 1]).astype(np.float32)
         plate_img = (plate_img / 255. - self._mean) / self._std
         plate_img = np.expand_dims(plate_img, 0)
+        
 
         # ONNX 推理
         outputs = self._session.run(None, {self._input_name: plate_img})
         logits = outputs[0]  # [1, T, C]
 
         # CTC 解码
-        pred_indices = np.argmax(logits, axis=2)[0]  # [T]
-        logger.info(f"[PlateOcrEngine] logits shape={logits.shape}, 前3个时间步的top3: "
-                     f"{[np.argsort(logits[0, t])[-3:][::-1].tolist() for t in range(min(3, logits.shape[1]))]}")
+        pred_indices = np.argmax(logits, axis=2).astype(np.int64)  # [B, T]
         plate_text = self._ctc_decode(pred_indices)
         logger.info(f"[PlateOcrEngine] OCR 结果: '{plate_text}', 原始索引: {pred_indices.tolist()}")
 
@@ -131,11 +128,10 @@ class PlateOcrEngine(BaseEngine):
         """CTC 贪心解码：去重复 + 去 blank"""
         chars = []
         prev_idx = 0
-        for idx in indices:
-            if idx != 0 and idx != prev_idx:
-                if idx - 1 < len(self._char_map):
-                    chars.append(self._char_map[idx - 1])
-            prev_idx = idx
+        for i, value in enumerate(indices[0]):
+            if value != 0 and i != prev_idx:
+                chars.append(self._char_map[value - 1])
+            prev_idx = i
         return "".join(chars)
 
     def unload(self):
