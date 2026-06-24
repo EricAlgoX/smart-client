@@ -26,20 +26,28 @@ class _FrameReaderThread(QThread):
     def run(self):
         import time
         next_time = time.monotonic()
+        consecutive_errors = 0
         while self._running:
             try:
                 frame, frame_name = self.video_stream.read()
                 if frame is None:
-                    self._running = False
-                    break
+                    consecutive_errors += 1
+                    if consecutive_errors > 30:  # ~3秒连续失败才放弃
+                        break
+                    if consecutive_errors == 1:
+                        logger.warning("[FrameReader] 读取失败，跳过该帧")
+                    time.sleep(0.1)
+                    continue
 
-                # 帧率控制：基于目标时间点，而非固定 sleep
+                consecutive_errors = 0
+
+                # 帧率控制：到时间了才处理，否则等一会儿再读
                 now = time.monotonic()
                 if now < next_time:
-                    # 还没到下一帧的时间，跳过（丢帧保持实时性）
+                    wait = next_time - now
+                    time.sleep(min(wait, 0.01))  # 最多睡10ms，避免忙等
                     continue
                 next_time += self.interval
-                # 防止累积延迟
                 if next_time < now - self.interval:
                     next_time = now
 
@@ -54,6 +62,9 @@ class _FrameReaderThread(QThread):
                     pass
                 self.frame_ready.emit()
             except Exception:
+                consecutive_errors += 1
+                if consecutive_errors > 10:
+                    break
                 time.sleep(0.1)
 
     def stop(self):
@@ -121,14 +132,18 @@ class StreamSession:
         self.inference_queue.put((self.first_frame, self.frame_name))
         logger.info(f"[Session:{self.name}] 推理已启动 (skip={skip_frames})")
 
-    def stop_inference(self):
-        """停止推理"""
-        self.running = False
-        self._stop_reader()
+    def stop_inference(self, keep_reader=False):
+        """停止推理
+        Args:
+            keep_reader: True 时保留读取线程（摄像头模式，画面继续）
+        """
+        if not keep_reader:
+            self.running = False
+            self._stop_reader()
         if self.inference_worker is not None:
             self.inference_worker.stop()
             self.inference_worker = None
-        logger.info(f"[Session:{self.name}] 推理已停止")
+        logger.info(f"[Session:{self.name}] 推理已停止 (keep_reader={keep_reader})")
 
     def set_active(self, active: bool):
         """设置是否为活跃流，调整帧率"""

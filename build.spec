@@ -22,7 +22,6 @@ a = Analysis(
         (res('models/smart_parking/config.json'), 'models/smart_parking'),
         (res('models/smart_parking/plate_recognition.onnx'), 'models/smart_parking'),
         (res('models/smart_parking/plate_ocr.onnx'), 'models/smart_parking'),
-        (res('models/smart_parking/vehicle_detection.onnx'), 'models/smart_parking'),
     ],
     hiddenimports=[
         'engine.onnx_engine',

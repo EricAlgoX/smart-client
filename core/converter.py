@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 import time
 import queue
 from collections import deque
@@ -85,7 +86,7 @@ class ImageConverter(QThread):
     pixmap_ready = Signal(QImage, object, str, object)
 
     def __init__(self, frame_queue: queue.Queue, result_queue: queue.Queue,
-                 target_size_getter, fps_limit=30, buffer_size=3):
+                 target_size_getter, fps_limit=30, buffer_size=2):
         super().__init__()
         self.frame_queue = frame_queue
         self.result_queue = result_queue
@@ -93,9 +94,7 @@ class ImageConverter(QThread):
         self.target_size_getter = target_size_getter
         self.fps_limit = fps_limit
         self._cached_details = []
-        self._last_frame = None  # 缓存最后一帧，推理结果到达时重新显示
-        self._last_path = ""
-        # 帧缓冲：延迟 buffer_size 帧显示，等待推理结果同步
+        # 帧缓冲：延迟显示一小段，等待推理结果同步
         self._frame_buffer = deque(maxlen=buffer_size)
 
     def run(self):
@@ -121,17 +120,10 @@ class ImageConverter(QThread):
                 frame, path = self.frame_queue.get(timeout=0.05)
                 if frame is not None:
                     self._frame_buffer.append((frame, path))
-                    self._last_frame = frame
-                    self._last_path = path
             except queue.Empty:
                 pass
 
-            # 3. 推理结果更新 + 有缓存帧 → 重新显示（图片模式的关键）
-            if details_updated and self._last_frame is not None:
-                self._emit_frame(self._last_frame.copy(), self._cached_details, self._last_path)
-                continue
-
-            # 4. 从缓冲区取出最早的一帧显示
+            # 3. 从缓冲区取出最早的一帧显示（推理结果已缓存在 _cached_details 中）
             if not self._frame_buffer:
                 continue
 
@@ -172,7 +164,7 @@ class ImageConverter(QThread):
                     cv2.rectangle(overlay, (xmin, ymin), (xmax, ymax), color, -1)
                     has_overlay = True
             if has_overlay:
-                frame = cv2.addWeighted(overlay, 0.1, frame, 0.9, 0)
+                frame = cv2.addWeighted(overlay, 0.03, frame, 0.97, 0)
 
         # 检测框和标签
         for det in details:
@@ -191,8 +183,10 @@ class ImageConverter(QThread):
         else:
             display_rgb = rgb
 
-        h, w, ch = display_rgb.shape
-        qimg = QImage(display_rgb.copy().data, w, h, ch * w, QImage.Format.Format_RGB888)
+        # Keep buffer alive to prevent QImage dangling pointer
+        img_buffer = np.ascontiguousarray(display_rgb)
+        h, w, ch = img_buffer.shape
+        qimg = QImage(img_buffer.data, w, h, ch * w, QImage.Format.Format_RGB888)
         self.pixmap_ready.emit(qimg, details, path, rgb)
 
     def stop(self):
@@ -202,3 +196,13 @@ class ImageConverter(QThread):
         except RuntimeError:
             pass
         self.wait(2000)
+
+    def clear_results(self):
+        """清除缓存的检测结果，清空结果队列（停止后不再绘制检测框，计数不再增加）"""
+        self._cached_details.clear()
+        # 排空结果队列，防止下一轮循环又被残留结果填回 _cached_details
+        try:
+            while True:
+                self.result_queue.get_nowait()
+        except queue.Empty:
+            pass

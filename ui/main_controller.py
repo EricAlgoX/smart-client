@@ -254,7 +254,7 @@ class MainController:
         # 标记为当前标签
         self.ui.switch_stream_tab(session_name)
         self.ui.set_status_connected(session_name)
-        self.stream_manager._active_name = session_name
+        self.stream_manager.set_active_session(session_name)
 
         # 摄像头/视频流：自动开始播放（实时画面），但不推理
         if source_type == "camera":
@@ -309,13 +309,16 @@ class MainController:
                 self._process_alerts(details, session)
                 self._update_records(details, session)
                 self._update_stats(details, session)
+                # 图片模式：推理一次后自动停止
+                if session.source_type == "image":
+                    session.stop_inference()
 
         session.activate_grid(on_cell_frame, lambda: cell_label.size())
 
         # 摄像头自动播放实时画面，视频/图片显示首帧预览
         if not session.running and session.source_type == "camera":
             session.start_streaming()
-        elif session.source_type == "image":
+        elif session.source_type in ("image", "video"):
             session.display_queue.put((session.first_frame, session.frame_name))
 
     # ────────────────────────────────────────
@@ -354,6 +357,12 @@ class MainController:
         # 剩余流前移填充空位（只重连位置变了的流）
         self._compact_grid()
 
+        # 更新 active session 的 UI 状态
+        new_active = self.stream_manager.get_active_name()
+        if new_active:
+            self.ui.switch_stream_tab(new_active)
+            self.ui.set_status_connected(new_active)
+
     def _compact_grid(self):
         """把剩余流紧凑排列到格子中（只重连位置变了的流）"""
         cells = self.ui.grid_cells
@@ -373,12 +382,14 @@ class MainController:
             if session:
                 active_sessions.append(session)
 
-        # 确定合适的网格大小
+        # 确定合适的网格大小（与 _create_session 一致）
         count = len(active_sessions)
         if count == 0:
             self.ui.show_placeholder()
             self.ui.set_status_disconnected()
             return
+        elif count == 1:
+            target_grid = 1
         elif count <= 4:
             target_grid = 2
         else:
@@ -415,6 +426,10 @@ class MainController:
                 cell.setText("")
                 cell.setStyleSheet(f"background: #0a0a1a; {border}")
 
+        # 清理可见范围外的 stale 槽位（防止下次 expand 读到脏数据）
+        for i in range(visible_count, len(self.stream_manager.slots)):
+            self.stream_manager.slots[i] = None
+
     def _switch_to_session(self, name):
         """切换 active session（宫格模式下只切引用，不动 converter）"""
         # 宫格模式：只更新 active 引用，不动 converter
@@ -422,7 +437,7 @@ class MainController:
         if old_active:
             old_active.set_active(False)
 
-        self.stream_manager._active_name = name
+        self.stream_manager.set_active_session(name)
         session = self.stream_manager.get_active()
         if session:
             session.set_active(True)
@@ -452,23 +467,35 @@ class MainController:
             session.inference_queue.put((session.first_frame, session.frame_name))
             return
 
-        # 视频/摄像头：启动推理 + 播放
+        # 视频/摄像头：先切换到活跃帧率，再启推理 + 播放
+        if session.source_type in ("video", "camera"):
+            session.set_active(True)
+            if session.running:
+                # 已有 reader 在跑（摄像头或已有视频），用新帧率重启
+                session.start_streaming()
+
         if session.inference_worker is None:
             session.start_inference(self._confidence, self._nms)
         if not session.running:
             session.start_streaming()
 
     def _stop_detection(self):
-        """停止检测：摄像头只停推理，视频停推理+播放"""
+        """停止检测：摄像头只停推理（画面继续），视频停推理+播放"""
         session = self.stream_manager.get_active()
         if session is None:
             return
 
-        session.stop_inference()
+        if session.source_type == "camera":
+            # 摄像头：只停推理，读取线程保留，画面继续（降回后台帧率）
+            session.stop_inference(keep_reader=True)
+            session.set_active(False)
+        else:
+            # 视频/图片：停推理 + 停读取，画面冻结
+            session.stop_inference(keep_reader=False)
 
-        # 视频文件：同时停止播放
-        if session.source_type == "video":
-            session.running = False
+        # 清除转换器的检测结果缓存 → 停止绘制检测框 + 停止计数增加
+        if session.converter is not None:
+            session.converter.clear_results()
 
         self.ui.log_edit.append(f"检测已停止: {session.name}")
 

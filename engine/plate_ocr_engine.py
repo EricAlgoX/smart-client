@@ -112,9 +112,9 @@ class PlateOcrEngine(BaseEngine):
         plate_img = (plate_img / 255. - self._mean) / self._std
         plate_img = np.expand_dims(plate_img, 0)
         
-
         # ONNX 推理
         outputs = self._session.run(None, {self._input_name: plate_img})
+        
         logits = outputs[0]  # [1, T, C]
 
         # CTC 解码
@@ -127,11 +127,9 @@ class PlateOcrEngine(BaseEngine):
     def _ctc_decode(self, indices: np.ndarray) -> str:
         """CTC 贪心解码：去重复 + 去 blank"""
         chars = []
-        prev_idx = 0
         for i, value in enumerate(indices[0]):
-            if value != 0 and i != prev_idx:
-                chars.append(self._char_map[value - 1])
-            prev_idx = i
+            if value != 0 and (not (i > 0 and indices[0][i - 1] == indices[0][i])):
+                chars.append(self._char_map[value])
         return "".join(chars)
 
     def unload(self):

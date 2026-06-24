@@ -87,6 +87,7 @@ class Pipeline:
                 for region in crop_regions:
                     x1, y1, x2, y2 = region["bbox"]
                     sub_image = image[y1:y2, x1:x2]
+                   
                     if sub_image.size == 0:
                         continue
                     # 传递上游类别信息（如单行/双行牌）给 OCR 引擎
@@ -109,7 +110,6 @@ class Pipeline:
                 # 没有上一步裁剪区域 → 降级到整图推理
                 logger.info(f"[Pipeline] Step {step}: 整图推理 (无 {input_from} 裁剪区域)")
                 details = engine.detect(image, step_conf, nms)
-                print(details)
                 logger.info(f"[Pipeline] Step {step}: 检测到 {len(details)} 个目标")
                 for d in details[:5]:
                     logger.info(f"  → class={d.get('class')} score={d.get('score')} bbox={d.get('bbox')}")

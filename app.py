@@ -407,7 +407,13 @@ class MainWindow(QMainWindow):
         self.tb_act_start = QAction("▶  开始检测", self)
         self.tb_act_stop = QAction("⏹  停止", self)
         toolbar.addAction(self.tb_act_start)
+        w = toolbar.widgetForAction(self.tb_act_start)
+        if w:
+            w.setObjectName("startBtn")
         toolbar.addAction(self.tb_act_stop)
+        w = toolbar.widgetForAction(self.tb_act_stop)
+        if w:
+            w.setObjectName("stopBtn")
 
         toolbar.addSeparator()
 

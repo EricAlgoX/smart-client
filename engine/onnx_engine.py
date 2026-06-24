@@ -3,6 +3,8 @@
 import cv2
 import numpy as np
 from typing import List, Dict
+import onnxruntime as ort
+
 from engine.base import BaseEngine
 from utils.logger import logger
 
@@ -15,7 +17,6 @@ class OnnxEngine(BaseEngine):
         self._config = {}
         self._loaded = False
         self._input_name = None
-        self._input_size = (640, 640)
 
     def load(self, config: dict) -> bool:
         """
@@ -23,136 +24,158 @@ class OnnxEngine(BaseEngine):
         config 示例:
         {
             "model_path": "models/yolov8n.onnx",
-            "input_size": [640, 640],
             "class_names": ["person", "car"],
-            "provider": "CPUExecutionProvider"
         }
         """
-        try:
-            import onnxruntime as ort
-        except ImportError:
-            logger.error("[OnnxEngine] onnxruntime 未安装，请执行: pip install onnxruntime")
-            return False
-
         model_path = config.get("model_path", "")
         if not model_path:
             logger.error("[OnnxEngine] 未指定 model_path")
             return False
 
-        provider = config.get("provider", "CPUExecutionProvider")
-        self._input_size = tuple(config.get("input_size", [640, 640]))
+        available = ort.get_available_providers()
+        providers = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider") if p in available]
+        
         self._config = config
 
         try:
-            self._session = ort.InferenceSession(model_path, providers=[provider])
+            self._session = ort.InferenceSession(model_path, providers=providers or available)
             self._input_name = self._session.get_inputs()[0].name
+            
+            self._input_size = tuple(config.get("input_size", [640, 640]))
+            self.input_height = self._input_size[0]
+            self.input_width = self._input_size[1]
+            
+            self.confidence_thres = config.get("confidence", 0.3)
+            self.iou_thres = config.get("nms_threholds", 0.5)
+        
             self._loaded = True
-            logger.info(f"[OnnxEngine] 已加载: {model_path} (provider={provider})")
+            logger.info(f"[OnnxEngine] 已加载: {model_path} (provider={providers})")
             return True
         except Exception as e:
             logger.error(f"[OnnxEngine] 加载失败: {e}")
             return False
 
-    def _letterbox(self, image, target_size):
-        """Letterbox resize：保持宽高比 + 灰色填充（跟 ultralytics YOLO 一致）"""
-        target_w, target_h = target_size
-        h, w = image.shape[:2]
-        scale = min(target_w / w, target_h / h)
-        new_w, new_h = int(w * scale), int(h * scale)
-        resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    def letterbox(self, img: np.ndarray, new_shape: tuple[int, int] = (640, 640)) -> tuple[np.ndarray, tuple[int, int]]:
+        """Resize and reshape images while maintaining aspect ratio by adding padding.
 
-        # 灰色画布
-        canvas = np.full((target_h, target_w, 3), 114, dtype=np.uint8)
-        # 居中粘贴
-        dx, dy = (target_w - new_w) // 2, (target_h - new_h) // 2
-        canvas[dy:dy + new_h, dx:dx + new_w] = resized
+        Args:
+            img (np.ndarray): Input image to be resized.
+            new_shape (tuple[int, int]): Target shape (height, width) for the image.
 
-        return canvas, scale, dx, dy
+        Returns:
+            img (np.ndarray): Resized and padded image.
+            pad (tuple[int, int]): Padding values (top, left) applied to the image.
+        """
+        shape = img.shape[:2]  # current shape [height, width]
+        # Scale ratio (new / old)
+        r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
 
-    def detect(self, image: np.ndarray, confidence: float = 0.3, nms: float = 0.5, **kwargs) -> List[Dict]:
-        if not self._loaded or image is None:
-            return []
+        # Compute padding
+        new_unpad = round(shape[1] * r), round(shape[0] * r)
+        dw, dh = (new_shape[1] - new_unpad[0]) / 2, (new_shape[0] - new_unpad[1]) / 2  # wh padding
 
-        orig_h, orig_w = image.shape[:2]
-        input_w, input_h = self._input_size
-        class_names = self._config.get("class_names", [])
+        if shape[::-1] != new_unpad:  # resize
+            img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
+        top, bottom = round(dh - 0.1), round(dh + 0.1)
+        left, right = round(dw - 0.1), round(dw + 0.1)
+        img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114))
 
-        # 前处理：letterbox resize + normalize + transpose（跟 ultralytics YOLO 一致）
-        img, scale, dx, dy = self._letterbox(image, (input_w, input_h))
-        img = img.astype(np.float32) / 255.0
-        img = np.transpose(img, (2, 0, 1))  # HWC → CHW
-        img = np.expand_dims(img, axis=0)    # add batch dim
+        return img, (top, left)
+    
+    def preprocess(self, image: np.ndarray) -> tuple[np.ndarray, tuple[int, int]]:
+        """Preprocess an input image before performing inference.
 
-        # 推理
-        try:
-            outputs = self._session.run(None, {self._input_name: img})
-        except Exception as e:
-            logger.error(f"[OnnxEngine] 推理失败: {e}")
-            return []
+        Args:
+            image (np.ndarray): BGR input image.
 
-        # 后处理（传入 letterbox 参数用于坐标还原）
-        result = self._postprocess(outputs, orig_w, orig_h, confidence, nms, class_names, scale, dx, dy)
-        logger.info(f"[OnnxEngine] 输入 {orig_w}x{orig_h}, conf={confidence}, nms={nms}, 检测到 {len(result)} 个")
-        return result
+        Returns:
+            image_data (np.ndarray): Preprocessed image data ready for inference with shape (1, 3, height, width).
+            pad (tuple[int, int]): Padding values (top, left) applied during letterboxing.
+        """
+        # Convert the image color space from BGR to RGB
+        img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    def _postprocess(self, outputs, orig_w, orig_h, conf_thresh, nms_thresh, class_names, scale=1.0, dx=0, dy=0):
-        """YOLO 后处理（兼容 YOLOv5/v8/v11 输出格式，支持 letterbox 坐标还原）"""
+        img, pad = self.letterbox(img, (self.input_width, self.input_height))
+
+        # Normalize the image data by dividing it by 255.0
+        image_data = np.array(img) / 255.0
+
+        # Transpose the image to have the channel dimension as the first dimension
+        image_data = np.transpose(image_data, (2, 0, 1))  # Channel first
+
+        # Expand the dimensions of the image data to match the expected input shape
+        image_data = image_data[None].astype(np.float32)
+
+        return image_data, pad
+    
+    def postprocess(self, input_image: np.ndarray, output: list[np.ndarray], pad: tuple[int, int],
+                    class_names, confidence: float, nms: float):
+        """Perform post-processing on the model's output to extract detections.
+
+        Args:
+            input_image (np.ndarray): The original input image.
+            output (list[np.ndarray]): The output arrays from the model.
+            pad (tuple[int, int]): Padding values (top, left) used during letterboxing.
+            class_names (list): Class name list.
+            confidence (float): Confidence threshold for this call.
+            nms (float): NMS threshold for this call.
+
+        Returns:
+            list[dict]: Detection results.
+        """
         details = []
 
-        preds = outputs[0]  # (1, N, 8400) 或 (1, 8400, N)
+        # Transpose and squeeze the output to match the expected shape
+        outputs = np.transpose(np.squeeze(output[0]))
 
-        if preds.ndim == 3:
-            preds = preds[0]
+        # Get the number of rows in the outputs array
+        rows = outputs.shape[0]
 
-        if preds.shape[0] < preds.shape[1]:
-            preds = preds.T
+        # Lists to store the bounding boxes, scores, and class IDs of the detections
+        boxes = []
+        scores = []
+        class_ids = []
 
-        num_classes = preds.shape[1] - 4
-        cx = preds[:, 0]
-        cy = preds[:, 1]
-        w = preds[:, 2]
-        h = preds[:, 3]
-        class_scores = preds[:, 4:]
+        # Use original image dims from the passed-in image (thread-safe — no self.img)
+        img_height, img_width = input_image.shape[:2]
 
-        max_scores = np.max(class_scores, axis=1)
-        cls_ids = np.argmax(class_scores, axis=1)
+        # Calculate the scaling factors for the bounding box coordinates
+        gain = min(self.input_height / img_height, self.input_width / img_width)
+        outputs[:, 0] -= pad[1]
+        outputs[:, 1] -= pad[0]
 
-        total_preds = len(max_scores)
-        mask = max_scores >= conf_thresh
-        cx, cy, w, h = cx[mask], cy[mask], w[mask], h[mask]
-        max_scores = max_scores[mask]
-        cls_ids = cls_ids[mask]
-        logger.info(f"[OnnxEngine] 总预测 {total_preds} 个, 置信度过滤后 {len(max_scores)} 个 (阈值={conf_thresh}), 类别数={num_classes}")
+        # Iterate over each row in the outputs array
+        for i in range(rows):
+            # Extract the class scores from the current row
+            classes_scores = outputs[i][4:]
 
-        if len(max_scores) == 0:
-            return []
+            # Find the maximum score among the class scores
+            max_score = np.amax(classes_scores)
 
-        # cxcywh → xyxy（在 letterbox 坐标系中）
-        x1 = cx - w / 2
-        y1 = cy - h / 2
-        x2 = cx + w / 2
-        y2 = cy + h / 2
+            # If the maximum score is above the confidence threshold
+            if max_score >= confidence:
+                # Get the class ID with the highest score
+                class_id = np.argmax(classes_scores)
 
-        # 还原到原图坐标：减去 padding 偏移，除以缩放比例
-        x1 = (x1 - dx) / scale
-        y1 = (y1 - dy) / scale
-        x2 = (x2 - dx) / scale
-        y2 = (y2 - dy) / scale
+                # Extract the bounding box coordinates from the current row
+                x, y, w, h = outputs[i][0], outputs[i][1], outputs[i][2], outputs[i][3]
 
-        # 裁剪到图像范围
-        x1 = np.clip(x1, 0, orig_w).astype(int)
-        y1 = np.clip(y1, 0, orig_h).astype(int)
-        x2 = np.clip(x2, 0, orig_w).astype(int)
-        y2 = np.clip(y2, 0, orig_h).astype(int)
+                # Calculate the scaled coordinates of the bounding box
+                left = int((x - w / 2) / gain)
+                top = int((y - h / 2) / gain)
+                width = int(w / gain)
+                height = int(h / gain)
 
-        boxes = np.stack([x1, y1, x2, y2], axis=1).tolist()
-        scores = max_scores.tolist()
+                # Add the class ID, score, and box coordinates to the respective lists
+                class_ids.append(class_id)
+                scores.append(max_score)
+                boxes.append([left, top, left+width, top+height])
 
-        # NMS
-        indices = cv2.dnn.NMSBoxes(boxes, scores, conf_thresh, nms_thresh)
+        # Apply non-maximum suppression to filter out overlapping bounding boxes
+        indices = cv2.dnn.NMSBoxes(boxes, scores, confidence, nms)
         if len(indices) > 0:
-            for i in indices.flatten():
-                cls_idx = int(cls_ids[i])
+            for i in np.array(indices).flatten():
+                cls_idx = class_ids[int(i)]
                 cls_name = class_names[cls_idx] if cls_idx < len(class_names) else str(cls_idx)
                 xmin, ymin, xmax, ymax = int(boxes[i][0]), int(boxes[i][1]), int(boxes[i][2]), int(boxes[i][3])
                 details.append({
@@ -163,6 +186,22 @@ class OnnxEngine(BaseEngine):
                 })
 
         return details
+    
+    def detect(self, image: np.ndarray, confidence: float = 0.3, nms: float = 0.5, **kwargs) -> List[Dict]:
+        if not self._loaded or image is None:
+            return []
+
+        class_names = self._config.get("class_names", [])
+
+        # Preprocess the image data (pass image explicitly — no instance state)
+        img_data, pad = self.preprocess(image)
+
+        # Run inference using the preprocessed image data
+        outputs = self._session.run(None, {self._input_name: img_data})
+
+        # Perform post-processing with explicit confidence/nms parameters
+        logger.info(f"[OnnxEngine] 输入 {image.shape}, conf={confidence}, nms={nms}")
+        return self.postprocess(image, outputs, pad, class_names, confidence, nms)
 
     def unload(self):
         self._session = None

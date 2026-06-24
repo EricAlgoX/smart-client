@@ -75,6 +75,11 @@ class StreamManager:
     def get_active_name(self) -> Optional[str]:
         return self._active_name
 
+    def set_active_session(self, name: str):
+        """仅设置 active 名称，无副作用（grid 模式下使用）"""
+        if name in self._sessions:
+            self._active_name = name
+
     # ── 格子分配 ──
 
     def _assign_slot(self, name: str) -> int:
